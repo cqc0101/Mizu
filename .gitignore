@@ -1,0 +1,19 @@
+**/bin/
+**/obj/
+artifacts/
+*.user
+.vs/
+*.log
+
+# Local data and developer scratch
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+settings.json
+diagnostics.json
+battery.json
+smoke-output/
+work/
+outputs/

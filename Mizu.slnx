@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/Mizu.Core/Mizu.Core.csproj" />
+  <Project Path="src/Mizu.Widget/Mizu.Widget.csproj" />
+  <Project Path="tests/Mizu.Tests/Mizu.Tests.csproj" />
+  <Project Path="tests/Mizu.Widget.Checks/Mizu.Widget.Checks.csproj" />
+</Solution>

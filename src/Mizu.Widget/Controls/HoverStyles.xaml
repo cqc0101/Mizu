@@ -1,0 +1,39 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:Mizu.Widget.Controls">
+  <Style x:Key="MizuHint" TargetType="ToolTip">
+    <Setter Property="OverridesDefaultStyle" Value="True"/>
+    <Setter Property="HasDropShadow" Value="False"/>
+    <Setter Property="Focusable" Value="False"/>
+    <Setter Property="IsHitTestVisible" Value="False"/>
+    <Setter Property="Background" Value="#F5F0F3E9"/>
+    <Setter Property="Foreground" Value="#56634E"/>
+    <Setter Property="BorderBrush" Value="#6495A48B"/>
+    <Setter Property="BorderThickness" Value="0.7"/>
+    <Setter Property="Padding" Value="13,10"/>
+    <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="MaxWidth" Value="286"/>
+    <Setter Property="ContentTemplate">
+      <Setter.Value><DataTemplate>
+        <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="246" LineHeight="19"/>
+      </DataTemplate></Setter.Value>
+    </Setter>
+    <Setter Property="Template">
+      <Setter.Value><ControlTemplate TargetType="ToolTip">
+        <Border x:Name="Bubble" Margin="7" CornerRadius="12" Padding="{TemplateBinding Padding}"
+                Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+          <Border.Effect><DropShadowEffect Color="#172519" BlurRadius="10" ShadowDepth="2" Opacity="0.16"/></Border.Effect>
+          <ContentPresenter ContentSource="Content"/>
+        </Border>
+      </ControlTemplate></Setter.Value>
+    </Setter>
+    <Style.Triggers>
+      <Trigger Property="local:HoverHints.IsDark" Value="True">
+        <Setter Property="Background" Value="#F526302B"/>
+        <Setter Property="Foreground" Value="#D8E1D2"/>
+        <Setter Property="BorderBrush" Value="#547F9478"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+</ResourceDictionary>

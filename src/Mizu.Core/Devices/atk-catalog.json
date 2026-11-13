@@ -1,0 +1,1631 @@
+[
+  {
+    "VendorId": 14139,
+    "ProductId": 4228,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1S+",
+    "CompanyId": 2,
+    "ModelId": 63
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4327,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE V3 NK",
+    "CompanyId": 2,
+    "ModelId": 72
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4405,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 SE NK",
+    "CompanyId": 2,
+    "ModelId": 88
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4425,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 SE NK",
+    "CompanyId": 2,
+    "ModelId": 92
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4639,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 S NK",
+    "CompanyId": 2,
+    "ModelId": 117
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4680,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE X3",
+    "CompanyId": 2,
+    "ModelId": 121
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4414,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Lite",
+    "CompanyId": 2,
+    "ModelId": 89
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4358,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 S NK",
+    "CompanyId": 2,
+    "ModelId": 76
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4373,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Plus NK",
+    "CompanyId": 2,
+    "ModelId": 83
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4365,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Plus NK",
+    "CompanyId": 2,
+    "ModelId": 78
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4562,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 UlTRA",
+    "CompanyId": 2,
+    "ModelId": 114
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4799,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1SE+ Silent",
+    "CompanyId": 2,
+    "ModelId": 130
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4374,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 NK",
+    "CompanyId": 2,
+    "ModelId": 84
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4415,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1E",
+    "CompanyId": 2,
+    "ModelId": 90
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4439,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9",
+    "CompanyId": 2,
+    "ModelId": 99
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4522,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2",
+    "CompanyId": 2,
+    "ModelId": 109
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4359,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 SE NK",
+    "CompanyId": 2,
+    "ModelId": 77
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4197,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 NK",
+    "CompanyId": 2,
+    "ModelId": 57
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4198,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 NK",
+    "CompanyId": 2,
+    "ModelId": 57
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4295,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 NK",
+    "CompanyId": 2,
+    "ModelId": 67
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4296,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 NK",
+    "CompanyId": 2,
+    "ModelId": 67
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4328,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE V3 PRO NK",
+    "CompanyId": 2,
+    "ModelId": 73
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4366,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 NK",
+    "CompanyId": 2,
+    "ModelId": 79
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4512,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 X",
+    "CompanyId": 2,
+    "ModelId": 107
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4681,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE X3 Pro",
+    "CompanyId": 2,
+    "ModelId": 122
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4682,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE X3 Turbo",
+    "CompanyId": 2,
+    "ModelId": 123
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4677,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 NB",
+    "CompanyId": 2,
+    "ModelId": 120
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4375,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Pro Max",
+    "CompanyId": 2,
+    "ModelId": 85
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4440,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Pro Max",
+    "CompanyId": 2,
+    "ModelId": 100
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4573,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 6
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4594,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultra Max 2.0 Tri-Mode",
+    "CompanyId": 1,
+    "ModelId": 15
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4589,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 12
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4588,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 11
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4599,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 18
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4601,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 Ultra",
+    "CompanyId": 1,
+    "ModelId": 20
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4116,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 PRO",
+    "CompanyId": 2,
+    "ModelId": 36
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4117,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 PRO MAX",
+    "CompanyId": 2,
+    "ModelId": 37
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4118,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 PRO",
+    "CompanyId": 2,
+    "ModelId": 38
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4119,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 PRO MAX",
+    "CompanyId": 2,
+    "ModelId": 39
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4230,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 MINI",
+    "CompanyId": 2,
+    "ModelId": 64
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4268,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Ultra",
+    "CompanyId": 2,
+    "ModelId": 66
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4863,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 87
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4142,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 Ultimate",
+    "CompanyId": 2,
+    "ModelId": 42
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4143,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultra",
+    "CompanyId": 2,
+    "ModelId": 43
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4156,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 Ultra",
+    "CompanyId": 2,
+    "ModelId": 45
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4157,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultimate",
+    "CompanyId": 2,
+    "ModelId": 46
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4165,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 EXTREME",
+    "CompanyId": 2,
+    "ModelId": 50
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4187,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 LEVIATAN",
+    "CompanyId": 2,
+    "ModelId": 56
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4231,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Ultimate",
+    "CompanyId": 2,
+    "ModelId": 65
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4329,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 EXTREME",
+    "CompanyId": 2,
+    "ModelId": 70
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4377,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultra",
+    "CompanyId": 2,
+    "ModelId": 87
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4595,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 NB ULTRA",
+    "CompanyId": 2,
+    "ModelId": 115
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4534,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultimate",
+    "CompanyId": 1,
+    "ModelId": 3
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4618,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Air",
+    "CompanyId": 1,
+    "ModelId": 21
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4580,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 Ultimate 2.0",
+    "CompanyId": 1,
+    "ModelId": 8
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4583,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultimate 2.0",
+    "CompanyId": 1,
+    "ModelId": 10
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4556,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK ZERO EX",
+    "CompanyId": 1,
+    "ModelId": 4
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4581,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 EXTREME 2.0",
+    "CompanyId": 1,
+    "ModelId": 9
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4619,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 EXTREME GT",
+    "CompanyId": 1,
+    "ModelId": 22
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4579,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 EXTREME 2.0",
+    "CompanyId": 1,
+    "ModelId": 7
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4592,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 LEVIATAN 2.0",
+    "CompanyId": 1,
+    "ModelId": 13
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4598,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Mini 2.0",
+    "CompanyId": 1,
+    "ModelId": 17
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4597,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Ultimate 2.0",
+    "CompanyId": 1,
+    "ModelId": 16
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4621,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK Ghost EXTREME",
+    "CompanyId": 1,
+    "ModelId": 23
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4622,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK Ghost Ultimate",
+    "CompanyId": 1,
+    "ModelId": 24
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4686,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK ZERO",
+    "CompanyId": 1,
+    "ModelId": 26
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4694,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Mini",
+    "CompanyId": 1,
+    "ModelId": 27
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4724,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 32
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4718,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 33
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4720,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultra Max 2.0 Tri-Mode",
+    "CompanyId": 1,
+    "ModelId": 37
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4719,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultra Max 2.0",
+    "CompanyId": 1,
+    "ModelId": 38
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4716,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Plus NK",
+    "CompanyId": 2,
+    "ModelId": 124
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4721,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1",
+    "CompanyId": 2,
+    "ModelId": 127
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4722,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 PRO",
+    "CompanyId": 2,
+    "ModelId": 125
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4723,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1 PRO MAX",
+    "CompanyId": 2,
+    "ModelId": 126
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4698,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Mini",
+    "CompanyId": 1,
+    "ModelId": 28
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4717,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Pro Max",
+    "CompanyId": 2,
+    "ModelId": 128
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4858,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 V3 ULTIMATE",
+    "CompanyId": 1,
+    "ModelId": 85
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4890,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 S NK",
+    "CompanyId": 2,
+    "ModelId": 132
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4713,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Mini +",
+    "CompanyId": 1,
+    "ModelId": 31
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4750,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Mini +",
+    "CompanyId": 1,
+    "ModelId": 52
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4745,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK ZERO EX +",
+    "CompanyId": 1,
+    "ModelId": 47
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4742,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultimate 2.0 +",
+    "CompanyId": 1,
+    "ModelId": 46
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4763,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 V3 EXTREME +",
+    "CompanyId": 1,
+    "ModelId": 58
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4765,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 V3 LEVIATAN +",
+    "CompanyId": 1,
+    "ModelId": 60
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4755,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Air +",
+    "CompanyId": 1,
+    "ModelId": 54
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4754,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultimate +",
+    "CompanyId": 1,
+    "ModelId": 53
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4749,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Mini 2.0 +",
+    "CompanyId": 1,
+    "ModelId": 51
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4748,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK U2 Ultimate 2.0 +",
+    "CompanyId": 1,
+    "ModelId": 50
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4758,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK PHANTOM ULTIMATE",
+    "CompanyId": 1,
+    "ModelId": 55
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4741,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 EXTREME 2.0 +",
+    "CompanyId": 1,
+    "ModelId": 45
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4770,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Air +",
+    "CompanyId": 1,
+    "ModelId": 61
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4747,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK Ghost Ultimate +",
+    "CompanyId": 1,
+    "ModelId": 49
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4746,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK Ghost EXTREME +",
+    "CompanyId": 1,
+    "ModelId": 48
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4764,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 Ultimate 2.0 +",
+    "CompanyId": 1,
+    "ModelId": 59
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4732,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Air +",
+    "CompanyId": 1,
+    "ModelId": 42
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4775,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 V3 ULTIMATE +",
+    "CompanyId": 1,
+    "ModelId": 62
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4779,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 NB ULTRA +",
+    "CompanyId": 2,
+    "ModelId": 129
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4735,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Air +",
+    "CompanyId": 1,
+    "ModelId": 40
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4734,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultimate +",
+    "CompanyId": 1,
+    "ModelId": 39
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4776,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 V3 ULTIMATE +",
+    "CompanyId": 1,
+    "ModelId": 63
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4777,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 V3 ULTIMATE +",
+    "CompanyId": 1,
+    "ModelId": 64
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4806,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Wireless Charging",
+    "CompanyId": 1,
+    "ModelId": 71
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4788,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK X1 Ultimate 2.0 Silent",
+    "CompanyId": 1,
+    "ModelId": 76
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4787,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK A9 Ultimate Silent",
+    "CompanyId": 1,
+    "ModelId": 75
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4906,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "ATK F1 V3 PIKACHU Edition",
+    "CompanyId": 1,
+    "ModelId": 90
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4952,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1SE+",
+    "CompanyId": 2,
+    "ModelId": 136
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4953,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "VXE R1SE+ Silent",
+    "CompanyId": 2,
+    "ModelId": 137
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4297,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "NK Mouse Dongle",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4378,
+    "UsagePage": 65284,
+    "Usage": 2,
+    "Name": "Wireless mouse 8k dongle",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4436,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK ZERO",
+    "CompanyId": 1,
+    "ModelId": 1
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4437,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-L1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4571,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Pro Max 2.0 NK",
+    "CompanyId": 2,
+    "ModelId": 1
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4572,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "NK mouse 8K NANO dongle",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4625,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Ultimate 3.0",
+    "CompanyId": 1,
+    "ModelId": 2
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4627,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE V3 NK",
+    "CompanyId": 2,
+    "ModelId": 5
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4628,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE V3 PRO NK",
+    "CompanyId": 2,
+    "ModelId": 6
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4629,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE V3 Plus",
+    "CompanyId": 2,
+    "ModelId": 7
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4630,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "NK mouse NANO dongle",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4642,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 SE NK",
+    "CompanyId": 2,
+    "ModelId": 2
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4643,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 NK",
+    "CompanyId": 2,
+    "ModelId": 3
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4644,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Plus NK",
+    "CompanyId": 2,
+    "ModelId": 4
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4666,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK Ghost Ultimate",
+    "CompanyId": 1,
+    "ModelId": 3
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4684,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R1 NK",
+    "CompanyId": 2,
+    "ModelId": 8
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4685,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R1 S NK",
+    "CompanyId": 2,
+    "ModelId": 9
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4687,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-L0",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4689,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Mini +",
+    "CompanyId": 1,
+    "ModelId": 4
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4707,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Plus NK",
+    "CompanyId": 2,
+    "ModelId": 13
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4708,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Pro Max 2.0 NK",
+    "CompanyId": 2,
+    "ModelId": 14
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4712,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Mini",
+    "CompanyId": 1,
+    "ModelId": 16
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4731,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE V3 PRO Max",
+    "CompanyId": 2,
+    "ModelId": 15
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4743,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Ultimate +",
+    "CompanyId": 1,
+    "ModelId": 9
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4744,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Air +",
+    "CompanyId": 1,
+    "ModelId": 6
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4751,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Ultra Max 2.0 +",
+    "CompanyId": 1,
+    "ModelId": 7
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4752,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4753,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k NANO dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4761,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK X1 SE Nearlink",
+    "CompanyId": 2,
+    "ModelId": 16
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4762,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R1 PRO MAX 2.0 NK",
+    "CompanyId": 2,
+    "ModelId": 17
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4766,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK ZERO +",
+    "CompanyId": 8,
+    "ModelId": 1
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4783,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k NANO dongle-L",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4785,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R2 SE NK",
+    "CompanyId": 2,
+    "ModelId": 19
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4813,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k NANO dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4814,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK PHANTOM ULTIMATE",
+    "CompanyId": 1,
+    "ModelId": 10
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4816,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 NB ULTRA",
+    "CompanyId": 2,
+    "ModelId": 20
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4817,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse -8K TOWER dongle",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4818,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE V3 NK",
+    "CompanyId": 2,
+    "ModelId": 21
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4825,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK X1 ULTIMATE 2.0+",
+    "CompanyId": 1,
+    "ModelId": 12
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4828,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R1 SE+",
+    "CompanyId": 2,
+    "ModelId": 22
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4830,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK X1 Ultra Max 2.0 + Tri-Mode",
+    "CompanyId": 1,
+    "ModelId": 13
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4833,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE T1",
+    "CompanyId": 2,
+    "ModelId": 23
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4835,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK U2 Plus NK",
+    "CompanyId": 2,
+    "ModelId": 25
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4842,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-G",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4844,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK X1 Air+",
+    "CompanyId": 1,
+    "ModelId": 14
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4849,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Ultimate +",
+    "CompanyId": 1,
+    "ModelId": 15
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4853,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4864,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Plus NK",
+    "CompanyId": 2,
+    "ModelId": 26
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4865,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Pro Max 2.0 NK",
+    "CompanyId": 2,
+    "ModelId": 27
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4866,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-O",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4868,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK F1 V3 ULTIMATE+",
+    "CompanyId": 1,
+    "ModelId": 17
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4869,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 3.0 NK",
+    "CompanyId": 2,
+    "ModelId": 29
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4870,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE V3 PRO NK",
+    "CompanyId": 2,
+    "ModelId": 30
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4871,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK F1 V3 Ultra Max",
+    "CompanyId": 1,
+    "ModelId": 19
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4872,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK F1 V3 ULTIMATE+",
+    "CompanyId": 1,
+    "ModelId": 18
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4878,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK X1 SE NK",
+    "CompanyId": 2,
+    "ModelId": 33
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4879,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 SE 3.0 NK",
+    "CompanyId": 2,
+    "ModelId": 32
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4880,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R1 S NK",
+    "CompanyId": 2,
+    "ModelId": 31
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4881,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R1N NK",
+    "CompanyId": 2,
+    "ModelId": 28
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4882,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK PHANTOM ULTIMATE",
+    "CompanyId": 1,
+    "ModelId": 21
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4884,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Ultimate",
+    "CompanyId": 1,
+    "ModelId": 22
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4885,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k NANO dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4889,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "VXE R1 SE+",
+    "CompanyId": 2,
+    "ModelId": 22
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4914,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-G",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4919,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Plus 3.0 NK",
+    "CompanyId": 2,
+    "ModelId": 34
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4920,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "ATK A9 Pro Max 3.0 NK",
+    "CompanyId": 2,
+    "ModelId": 35
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4926,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k NANO dongle-A1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4927,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse -1k dongle",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4934,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4935,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k NANO dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4936,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k NANO dongle-M1",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4939,
+    "UsagePage": 65285,
+    "Usage": 1,
+    "Name": "Wireless mouse 8k dongle",
+    "CompanyId": null,
+    "ModelId": null
+  },
+  {
+    "VendorId": 14139,
+    "ProductId": 4606,
+    "UsagePage": 65282,
+    "Usage": 2,
+    "Name": "Wireless mouse 8k NANO dongle-L",
+    "CompanyId": null,
+    "ModelId": null
+  }
+]

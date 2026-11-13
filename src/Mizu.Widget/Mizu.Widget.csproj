@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Mizu</AssemblyName><RootNamespace>Mizu.Widget</RootNamespace>
+    <ApplicationIcon>Assets/mizu.ico</ApplicationIcon>
+    <PublishTrimmed>false</PublishTrimmed>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Mizu.Core/Mizu.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <None Include="../../vendor/PawnIO/*" Link="drivers/PawnIO/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
