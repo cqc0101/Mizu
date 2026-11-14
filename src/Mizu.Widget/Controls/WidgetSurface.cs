@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using Mizu.Core;
@@ -9,6 +9,8 @@ namespace Mizu.Widget.Controls;
 public sealed class WidgetSurface(WidgetState state, AppSettings settings) : FrameworkElement
 {
     public const double SurfaceWidth = 356, SurfaceHeight = 472;
+    public static readonly DependencyProperty FooterRevealProperty = DependencyProperty.Register(nameof(FooterReveal), typeof(double), typeof(WidgetSurface), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+    public double FooterReveal { get => (double)GetValue(FooterRevealProperty); set => SetValue(FooterRevealProperty, value); }
     public bool PreviewMaterial { get; set; }
     public WidgetLayout Layout => WidgetLayout.Calculate(settings);
     private readonly DevicePager pager = new();
@@ -21,11 +23,21 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     { Name = settings.NameOverrides.GetValueOrDefault(d.Id, d.Name), Kind = settings.TypeOverrides.GetValueOrDefault(d.Id, d.Kind) })
                 .OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.ObservedAt.HasValue).ThenBy(d => d.Kind).ToArray();
             foreach (var device in visible) if (!deviceOrder.Contains(device.Id)) deviceOrder.Add(device.Id);
-            return visible.OrderBy(d => deviceOrder.IndexOf(d.Id)).ToArray();
+            return visible.OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.State == LinkState.Online && d.Link == LinkKind.Bluetooth).ThenBy(d => deviceOrder.IndexOf(d.Id)).ToArray();
         }
     }
     private Brush foreground = Brushes.Gray, secondary = Brushes.Gray, quiet = Brushes.Gray, green = Brushes.Gray, line = Brushes.Gray;
     private ThemePalette Palette => ThemePalette.Get(settings.Theme);
+    public string NetworkHint
+    {
+        get {
+            var n = state.Network;
+            var records = n?.Targets ?? [];
+            if (records.Length == 0 && !string.IsNullOrWhiteSpace(n?.Target)) records = [new(n.Target,n.Loss,n.Latency,n.Probes)];
+            var summaries = records.Select((probe,index) => $"{(settings.ShowNetworkProbeIp ? probe.Target : $"探测 {index+1}")} · {probe.Latency?.ToString() ?? "—"} ms · {probe.Loss?.ToString("0.#") ?? "—"}% · {probe.Probes}/60 次");
+            return (n?.Connected == true ? "网卡已连接" : "无活动网卡") + $" · {n?.Adapter}\n↓ 下载 · ↑ 上传\n" + string.Join("\n", summaries) + "\nICMP 被屏蔽不等于实际业务丢包";
+        }
+    }
     private bool Dark => Palette.Dark;
     private double Dpi => VisualTreeHelper.GetDpi(this).PixelsPerDip;
     private void Text(DrawingContext d, string value, double x, double y, double size, Brush brush, double pixelsPerDip = 1, bool medium = false, double? width = null)
@@ -39,7 +51,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         base.OnRender(d);
         foreground = Art.Brush(Palette.Text); secondary = Art.Brush(Palette.Secondary);
         quiet = Art.Brush(Palette.Quiet); green = Art.Brush(Palette.Accent); line = Art.Brush(Palette.Line);
-        var layout = Layout; double height = layout.Height, radius = settings.CornerRadius;
+        var layout = Layout; double height = layout.Height + 44 * FooterReveal, radius = settings.CornerRadius;
         var baseColor = Art.Brush(Palette.Base).Color;
         baseColor.A = PreviewMaterial ? (byte)212 : (byte)(settings.GlassOpacity * 255);
         var glass = new LinearGradientBrush(baseColor, Color.FromArgb((byte)Math.Max(16, baseColor.A - 18), baseColor.R, baseColor.G, baseColor.B), 95);
@@ -52,20 +64,55 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         for (int i = 0; i < layout.Sections.Length; i++)
         {
             var section = layout.Sections[i];
-            if (i > 0) Art.Line(d, Art.Pen(line, .8), 29, section.Top - 8, 327, section.Top - 8);
+            if (i > 0 && !(section.Kind == WidgetSection.Todo && !settings.Todos.Any(t => !settings.HideCompletedTodos || !t.Completed))) Art.Line(d, Art.Pen(line, .8), 29, section.Top - 8, 327, section.Top - 8);
             switch (section.Kind)
             {
                 case WidgetSection.Weather: DrawWeather(d, section.Top); break;
                 case WidgetSection.Devices: DrawDevices(d, section.Top); break;
                 case WidgetSection.Metrics: DrawMetrics(d, section.Top); break;
+                case WidgetSection.Network: DrawNetwork(d, section.Top); break;
+                case WidgetSection.Media:
+                    Art.Icon(d, "music", 31, section.Top + 4, 24, secondary);
+                    Text(d, string.IsNullOrWhiteSpace(state.Media.Title) ? "—" : state.Media.Title, 68, section.Top, 15, foreground, Dpi, width: 255);
+                    Text(d, state.Media.Artist, 68, section.Top + 26, 11, secondary, Dpi, width: 255);
+                    break;
+                case WidgetSection.Poetry:
+                    var quote = state.Poetry is { } poem ? "“" + poem.Content.Replace("\r", " ").Replace("\n", " ").Trim() + "”" : "—";
+                    var measure = new FormattedText(quote, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                        new Typeface("Segoe UI, Microsoft YaHei UI"), 15 * settings.TextScale, foreground, Dpi);
+                    var size = Math.Max(11, Math.Min(15, 15 * 294 / Math.Max(1, measure.WidthIncludingTrailingWhitespace)));
+                    Text(d, quote, 31, section.Top + 4, size, state.PoetryFailed ? secondary : foreground, Dpi, width: 294);
+                    var credit = state.Poetry is { } source ? $"— {source.DynastyMark} · 《{source.Origin}》" : "—";
+                    Art.Text(d, credit, 31, section.Top + 38, 11 * settings.TextScale, secondary, Dpi, width: 294,
+                        weight: settings.TextWeight, alignment: TextAlignment.Right);
+                    break;
                 case WidgetSection.Todo:
-                    if (!settings.Todos.Any(t => !settings.HideCompletedTodos || !t.Completed))
-                    { d.DrawEllipse(null, Art.Pen(quiet, 1), new(39, section.Top + 16), 6, 6); Art.Line(d, Art.Pen(line), 59, section.Top + 16, 217, section.Top + 16); }
                     break;
             }
         }
+        if (settings.ShowTodo && FooterReveal > 0) {
+            d.PushOpacity(FooterReveal); Art.Line(d, Art.Pen(line, .7), 31, layout.Height - 12, 325, layout.Height - 12); d.Pop();
+        }
         d.Pop();
     }
+    private void DrawNetwork(DrawingContext d, double y)
+    {
+        var n = state.Network;
+        d.DrawEllipse(n?.Connected == true ? green : quiet, null, new(37, y + 14), 4, 4);
+        Text(d, "↓ " + Speed(n?.Download), 52, y + 4, 14, foreground, Dpi, width: 132);
+        Text(d, "↑ " + Speed(n?.Upload), 195, y + 4, 14, foreground, Dpi, width: 132);
+        var targets = settings.NetworkProbeTargets?.ToArray() ?? new[] { settings.NetworkProbeTarget };
+        for (int i = 0; i < targets.Length; i++) {
+            var row = y + 38 + i * (settings.ShowNetworkProbeIp ? 44 : 28);
+            var probe = n?.Targets.FirstOrDefault(p => p.Target == targets[i]);
+            if (probe is null && n?.Target == targets[i] && n.Targets.Length == 0) probe = new(n.Target,n.Loss,n.Latency,n.Probes);
+            if (settings.ShowNetworkProbeIp) { Text(d, targets[i], 31, row, 10, quiet, Dpi, width: 294); row += 15; }
+            d.DrawEllipse(probe?.Latency is not null ? green : quiet, null, new(37,row+9), 2.5, 2.5);
+            Text(d, probe?.Latency is { } ms ? $"{ms} ms" : "— ms", 52, row, 12, secondary, Dpi, width: 135);
+            Text(d, probe?.Loss is { } loss ? $"{loss:0.#}%" : "—%", 238, row, 12, secondary, Dpi, width: 85);
+        }
+    }
+    private static string Speed(double? value) => value is not { } v ? "—" : v >= 1048576 ? $"{v / 1048576:0.0} MiB/s" : $"{v / 1024:0.0} KiB/s";
     private void DrawWeather(DrawingContext d, double y)
     {
         var w = state.Weather;
@@ -74,11 +121,12 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             var compact = settings.CompactMode;
             if (settings.WeatherCurrent)
             {
-                Text(d, w is null ? "—" : $"{w.Celsius:0}°", 29, y - 4, compact ? 48 : 62, state.WeatherFailed ? secondary : foreground, Dpi);
+                Text(d, w is null ? "—" : $"{w.Celsius:0}°", 29, y - 4, compact ? 48 : 62, state.WeatherFailed || state.WeatherCached ? secondary : foreground, Dpi);
                 if (settings.WeatherTodayRange) Text(d, w is null ? "↑ —   ↓ —" : $"↑ {w.High:0}°   ↓ {w.Low:0}°", 32, y + (compact ? 55 : 73), 12, secondary, Dpi);
             }
             else Text(d, w is null ? "— / —" : $"{w.Low:0}° / {w.High:0}°", 30, y + 16, compact ? 28 : 34, foreground, Dpi);
-            Art.Weather(d, w?.Code ?? 2, w?.IsDay ?? true, 243, y + 2, compact ? 64 : 80, w is null ? quiet : secondary, Dark);
+            if (w is { DayPhaseKnown: false, Code: >= 0 and <= 2 }) Art.Icon(d, "unknown", 261, y + 10, 44, secondary);
+            else Art.Weather(d, w?.Code ?? 2, w?.IsDay ?? true, 243, y + 2, compact ? 64 : 80, w is null ? quiet : secondary, Dark);
             if (state.WeatherFailed) d.DrawEllipse(Art.Brush("#B5A276"), null, new(322, y + 9), 3, 3);
             y += compact ? 84 : 116;
         }
@@ -86,7 +134,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         {
             var available = w?.Hours ?? [];
             if (settings.HourlyIncludeCurrent && w?.CurrentHour is { } current) available = new[] { current }.Concat(available).ToArray();
-            var hours = available.Where((_, index) => index % settings.HourStep == 0).Take(settings.ForecastHours).ToArray();
+            var hours = available.Where((_, index) => index % Math.Max(1, (int)Math.Ceiling(settings.HourStep / (double)(w?.HourResolution ?? 1))) == 0).Take(settings.ForecastHours).ToArray();
             for (int i = 0; i < settings.ForecastHours; i++)
             {
                 double x = 30 + i % 5 * 61, row = y + i / 5 * 60;
@@ -194,7 +242,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     {
         var p = e.GetPosition(this); var area = Layout.Sections.FirstOrDefault(s => p.Y >= s.Top && p.Y <= s.Top + s.Height);
         string? tip = null;
-        if (area?.Kind == WidgetSection.Weather) tip = (settings.Location is null ? "双击设置选择城市" : settings.Location.ToString()) + (state.Weather is { } w ? $"\n{w.Humidity}% · {w.WindKph:0} km/h\n更新 {w.UpdatedAt.ToLocalTime():HH:mm} · Open-Meteo" : "\n天气尚未就绪") + (state.WeatherFailed ? "\n当前为上次天气" : "");
+        if (area?.Kind == WidgetSection.Weather) tip = (settings.Location is null ? "双击设置选择城市" : settings.Location.ToString()) + (state.Weather is { } w ? $"\n{w.Humidity}% · {w.WindKph:0} km/h\n更新 {w.UpdatedAt.ToLocalTime():HH:mm} · {w.Source}" + (w.HourResolution > 1 ? $"\n备用数据：每 {w.HourResolution} 小时一段，可用天数有限" : "") : "\n天气尚未就绪") + (state.WeatherCached ? "\n启动缓存 · 正在联网刷新" : "") + (state.WeatherFailed ? "\n更新失败，30 秒后重试；当前可能为上次读数" : "");
         if (area?.Kind == WidgetSection.Devices)
         {
             var index = (p.Y - area.Top < (settings.CompactMode ? 56 : 78) ? 0 : 1) + state.DevicePage * 2;
@@ -210,6 +258,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             if (devices.Count > 2) tip += "\n滚轮切换设备";
         }
         if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip;
+        if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
+        if (area?.Kind == WidgetSection.Media) tip = $"{state.Media.Title}\n{state.Media.Artist}\n{state.Media.Status}";
+        if (area?.Kind == WidgetSection.Poetry) tip = state.Poetry is { } poem ? $"{poem.Content}\n{poem.Dynasty} · {poem.Author} · 《{poem.Origin}》\n{poem.Source} · {(poem.Source == "内置公版诗库" ? "选取" : "更新")} {poem.FetchedAt.ToLocalTime():MM/dd HH:mm}" + (state.PoetryFailed ? poem.Source == "内置公版诗库" ? "\n在线暂不可用，正在使用内置诗库" : "\n在线更新失败，保留已缓存诗词" : "") : "诗词尚未就绪，可在设置中刷新";
         HoverHints.Set(this, tip, System.Windows.Controls.Primitives.PlacementMode.Mouse);
         base.OnMouseMove(e);
     }
@@ -217,7 +268,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     { HoverHints.Close(this); base.OnMouseLeave(e); }
 }
 
-public sealed class IconView(string name, Brush brush) : FrameworkElement
+public sealed class IconView(string name, Brush brush, double stroke = 1.2) : FrameworkElement
 {
-    protected override void OnRender(DrawingContext drawingContext) => Art.Icon(drawingContext, name, 0, 0, Math.Min(ActualWidth, ActualHeight), brush, 1.2);
+    protected override void OnRender(DrawingContext drawingContext) => Art.Icon(drawingContext, name, 0, 0, Math.Min(ActualWidth, ActualHeight), brush, stroke);
 }

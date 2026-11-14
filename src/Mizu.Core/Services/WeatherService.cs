@@ -8,7 +8,7 @@ public sealed class WeatherService : IDisposable
 {
     private readonly HttpClient client;
     public WeatherService(HttpMessageHandler? handler = null)
-    { client = handler is null ? new() : new(handler); client.Timeout = TimeSpan.FromSeconds(12); client.DefaultRequestHeaders.UserAgent.ParseAdd("Mizu/0.1"); }
+    { client = handler is null ? new() : new(handler); client.Timeout = TimeSpan.FromSeconds(12); client.DefaultRequestHeaders.UserAgent.ParseAdd("Mizu/0.4.0"); }
     public async Task<Place[]> SearchAsync(string query, CancellationToken token)
     {
         if (query.Trim().Length < 2) return [];
@@ -17,14 +17,28 @@ public sealed class WeatherService : IDisposable
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(token), cancellationToken: token);
         if (!json.RootElement.TryGetProperty("results", out var rows)) return [];
         return rows.EnumerateArray().Select(r => new Place(r.GetProperty("name").GetString()!, r.TryGetProperty("country", out var c) ? c.GetString()! : "",
-            r.TryGetProperty("admin1", out var region) ? region.GetString() : null, r.GetProperty("latitude").GetDouble(), r.GetProperty("longitude").GetDouble())).ToArray();
+            r.TryGetProperty("admin1", out var region) ? region.GetString() : null, r.GetProperty("latitude").GetDouble(), r.GetProperty("longitude").GetDouble()) { TimeZoneId = r.TryGetProperty("timezone", out var zone) ? zone.GetString() : null }).ToArray();
     }
-    public async Task<WeatherSnapshot> FetchAsync(Place place, CancellationToken token)
+    public async Task<WeatherSnapshot> FetchAsync(Place place, CancellationToken token, bool allowBackup = true)
     {
         var url = FormattableString.Invariant($"https://api.open-meteo.com/v1/forecast?latitude={place.Latitude}&longitude={place.Longitude}&current=temperature_2m,relative_humidity_2m,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,weather_code&forecast_days=8&timezone=auto");
-        using var response = await client.GetAsync(url, token); response.EnsureSuccessStatusCode();
-        using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(token), cancellationToken: token);
-        return Parse(doc.RootElement, DateTimeOffset.UtcNow);
+        try {
+            using var primary = CancellationTokenSource.CreateLinkedTokenSource(token); primary.CancelAfter(TimeSpan.FromSeconds(6));
+            using var response = await client.GetAsync(url, primary.Token); response.EnsureSuccessStatusCode();
+            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(primary.Token), cancellationToken: primary.Token);
+            return Parse(doc.RootElement, DateTimeOffset.UtcNow);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (allowBackup && ex is HttpRequestException or JsonException or FormatException or InvalidOperationException or KeyNotFoundException or OperationCanceledException or IndexOutOfRangeException or IOException or ArgumentException) {
+            AppLog.Write("weather.primary", ex.GetType().Name);
+        }
+        using var backup = CancellationTokenSource.CreateLinkedTokenSource(token); backup.CancelAfter(TimeSpan.FromSeconds(8));
+        var backupUrl = FormattableString.Invariant($"https://wttr.in/{place.Latitude},{place.Longitude}?format=j1");
+        using var request = new HttpRequestMessage(HttpMethod.Get, backupUrl);
+        request.Headers.UserAgent.ParseAdd("Mizu/0.4.0 (+https://github.com/cqc0101/Mizu)");
+        using var fallback = await client.SendAsync(request, backup.Token); fallback.EnsureSuccessStatusCode();
+        using var fallbackDoc = await JsonDocument.ParseAsync(await fallback.Content.ReadAsStreamAsync(backup.Token), cancellationToken: backup.Token);
+        return WttrWeather.Parse(fallbackDoc.RootElement, place, DateTimeOffset.UtcNow);
     }
     public static WeatherSnapshot Parse(JsonElement root, DateTimeOffset observedAt)
     {

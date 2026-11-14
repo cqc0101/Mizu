@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -20,7 +20,16 @@ public sealed class MainWindow : Window
     private readonly System.Windows.Forms.NotifyIcon tray;
     private readonly StackPanel toolbar;
     private readonly Grid layout;
+    private readonly Grid mediaHost = new();
+    private string? mediaKey;
     private readonly Grid todoHost = new();
+    private readonly Grid todoEditorHost = new();
+    private readonly System.Windows.Threading.DispatcherTimer todoHideDelay = new() { Interval = TimeSpan.FromMilliseconds(160) };
+    private bool footerAnimating, footerWanted;
+    private int footerGeneration;
+    public static readonly DependencyProperty TodoRevealProperty = DependencyProperty.Register(nameof(TodoReveal), typeof(double), typeof(MainWindow),
+        new PropertyMetadata(0.0, (d, _) => ((MainWindow)d).UpdateTodoGeometry()));
+    public double TodoReveal { get => (double)GetValue(TodoRevealProperty); private set => SetValue(TodoRevealProperty, value); }
     private readonly ScaleTransform widgetScale = new(1, 1);
     private int resizeGeneration;
     private bool settingsPreviewQueued, fullPreviewNeeded;
@@ -29,6 +38,8 @@ public sealed class MainWindow : Window
     private Border? todoEditor;
     private SettingsWindow? settingsWindow;
     private bool quitting;
+    private IntPtr hidNotification;
+    private HashSet<string> onlineDevices = [];
     private bool disposed;
     private readonly bool persistSettings;
     public MainWindow(AppSettings settings, WidgetState? state = null, bool preview = false, bool persistSettings = true)
@@ -47,6 +58,8 @@ public sealed class MainWindow : Window
             Clip = new RectangleGeometry(new Rect(0, 0, 356, initialLayout.Height), settings.CornerRadius, settings.CornerRadius) };
         layout.Children.Add(Surface);
         layout.Children.Add(todoHost);
+        layout.Children.Add(todoEditorHost);
+        layout.Children.Add(mediaHost);
         toolbar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new(0, 5, 24, 0), Opacity = 0, IsHitTestVisible = false };
         toolbar.Children.Add(IconButton("refresh", "刷新 · F5", async () => { await RefreshAsync(); }));
         toolbar.Children.Add(IconButton("pin", "切换置顶", () => { Settings.AlwaysOnTop = !Settings.AlwaysOnTop; ApplySettings(); SaveSettings(); }));
@@ -55,7 +68,7 @@ public sealed class MainWindow : Window
         layout.Children.Add(toolbar);
         layout.RenderTransform = widgetScale;
         var stage = new Canvas(); stage.Children.Add(layout); Content = stage;
-        Engine = new(settings, State, () => Surface.InvalidateVisual());
+        Engine = new(settings, State, OnStateChanged);
         tray = new() { Text = "Mizu", Visible = !preview };
         using (var icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!)) if (icon is not null) tray.Icon = (System.Drawing.Icon)icon.Clone();
         var menu = new System.Windows.Forms.ContextMenuStrip();
@@ -68,6 +81,7 @@ public sealed class MainWindow : Window
         {
             ApplySettings();
             var hwnd = new WindowInteropHelper(this).Handle;
+            if (!preview) hidNotification = NativeWindow.WatchHid(hwnd);
             HwndSource.FromHwnd(hwnd)?.AddHook(WindowMessage);
             if (!preview && !NativeWindow.RegisterHotKey(hwnd, 0x4d5a, 0x4003, 0x4d)) AppLog.Write("hotkey", "Ctrl+Alt+M unavailable; tray recovery remains available");
         };
@@ -76,6 +90,8 @@ public sealed class MainWindow : Window
             RestorePosition();
             if (!preview) Engine.Start();
         };
+        todoHideDelay.Tick += (_, _) => { todoHideDelay.Stop(); if (!IsMouseOver && todoEditor?.IsKeyboardFocusWithin != true) AnimateTodoFooter(false); };
+        IsVisibleChanged += (_, _) => { if (!IsVisible) { todoHideDelay.Stop(); AnimateTodoFooter(false, false); } };
         MouseEnter += (_, _) => SetHover(true);
         MouseLeave += (_, _) => SetHover(false);
         PreviewMouseLeftButtonDown += (_, e) =>
@@ -101,14 +117,59 @@ public sealed class MainWindow : Window
             foreach (var button in toolbar.Children.OfType<Button>()) HoverHints.Close(button);
         }
         toolbar.BeginAnimation(OpacityProperty, new DoubleAnimation(visible ? 1 : 0, TimeSpan.FromMilliseconds(visible ? 160 : 220)));
-        if (todoEditor is not null && !todoEditor.IsKeyboardFocusWithin)
-        { todoEditor.IsHitTestVisible = visible; todoEditor.BeginAnimation(OpacityProperty, new DoubleAnimation(visible ? 1 : 0, TimeSpan.FromMilliseconds(160))); }
+        if (visible) { todoHideDelay.Stop(); AnimateTodoFooter(true); }
+        else if (todoEditor?.IsKeyboardFocusWithin != true) { todoHideDelay.Stop(); todoHideDelay.Start(); }
+    }
+    private void OnStateChanged()
+    {
+        var visible = Surface.VisibleDevices;
+        var current = visible.Where(d => d.State == LinkState.Online).Select(d => d.Id).ToHashSet();
+        var added = visible.FirstOrDefault(d => current.Contains(d.Id) && !onlineDevices.Contains(d.Id))?.Id; onlineDevices = current;
+        if (added is not null) State.DevicePage = Math.Max(0, visible.ToList().FindIndex(d => d.Id == added) / 2);
+        Surface.InvalidateVisual(); UpdateMediaControls();
+    }
+    private void AnimateTodoFooter(bool open, bool animate = true)
+    {
+        open &= Settings.ShowTodo;
+        if (animate && footerAnimating && footerWanted == open) { UpdateTodoGeometry(); return; }
+        footerWanted = open;
+        if (open) todoHideDelay.Stop();
+        double target = open ? 1 : 0, from = TodoReveal;
+        if (Math.Abs(from - target) < .0001 && !footerAnimating) { UpdateTodoGeometry(); return; }
+        int generation = ++footerGeneration;
+        void Finish() {
+            if (generation != footerGeneration) return;
+            footerAnimating = false; BeginAnimation(TodoRevealProperty, null); TodoReveal = target; UpdateTodoGeometry();
+        }
+        if (!animate || !IsLoaded || !Settings.SmoothResize) { Finish(); return; }
+        footerAnimating = true;
+        // Reserve native bounds once; only the WPF surface, clip and editor
+        // move each frame. A reversed gesture starts from the current value.
+        Height = Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + 44) * widgetScale.ScaleY);
+        var motion = new DoubleAnimation(from, target, TimeSpan.FromMilliseconds(open ? 260 : 220)) {
+            EasingFunction = open ? new QuinticEase { EasingMode = EasingMode.EaseOut } : new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        motion.Completed += (_, _) => Finish(); BeginAnimation(TodoRevealProperty, motion, HandoffBehavior.SnapshotAndReplace);
+    }
+    private void UpdateTodoGeometry()
+    {
+        if (layout is null || Surface is null) return;
+        var baseHeight = WidgetLayout.Calculate(Settings).Height;
+        var reveal = Settings.ShowTodo ? Math.Clamp(TodoReveal, 0, 1) : 0;
+        var height = baseHeight + 44 * reveal;
+        layout.Height = Surface.Height = height; Surface.FooterReveal = reveal;
+        layout.Clip = new RectangleGeometry(new Rect(0, 0, 356, height), Settings.CornerRadius, Settings.CornerRadius);
+        todoEditorHost.Margin = new(30, baseHeight - 4, 0, 0);
+        todoEditorHost.Opacity = Math.Clamp((reveal - .12) / .88, 0, 1);
+        todoEditorHost.RenderTransform = new TranslateTransform(0, 8 * (1 - reveal));
+        todoEditorHost.IsHitTestVisible = footerWanted && reveal > .85;
+        if (!footerAnimating && !widgetScale.HasAnimatedProperties) { Width = 356 * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
     }
     private bool IsInteractive(DependencyObject source)
     {
         while (source is not null)
         {
-            if (source == toolbar || source == todoHost || source is System.Windows.Controls.Primitives.ButtonBase or System.Windows.Controls.Primitives.TextBoxBase) return true;
+            if (source == toolbar || source == todoHost || source == todoEditorHost || source is System.Windows.Controls.Primitives.ButtonBase or System.Windows.Controls.Primitives.TextBoxBase) return true;
             source = source is Visual ? VisualTreeHelper.GetParent(source) : LogicalTreeHelper.GetParent(source);
         }
         return false;
@@ -132,7 +193,7 @@ public sealed class MainWindow : Window
         if (msg == 0x0312 && wParam.ToInt32() == 0x4d5a)
         { Settings.ClickThrough = false; Show(); ApplySettings(); SaveSettings(); Activate(); handled = true; }
         if (msg == 0x8001) { Show(); Activate(); handled = true; }
-        if (msg == 0x0219 || msg == 0x0218 && wParam.ToInt32() == 0x12) _ = Engine.RefreshDevicesAsync();
+        if (msg == 0x0219 || msg == 0x0218 && wParam.ToInt32() == 0x12) Engine.RequestConnectionRefresh();
         return IntPtr.Zero;
     }
     private void RestorePosition()
@@ -154,10 +215,13 @@ public sealed class MainWindow : Window
         layout.Clip = new RectangleGeometry(new Rect(0, 0, 356, calculated.Height), Settings.CornerRadius, Settings.CornerRadius);
         toolbar.Margin = new(0, 6, Math.Max(24, Settings.CornerRadius * .65), 0);
         var area = calculated.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
-        var key = $"{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
+        var key = $"{Settings.ShowTodo}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
         if (key != todoKey) { BuildTodo(calculated); todoKey = key; }
+        UpdateMediaControls();
         Surface.InvalidateVisual(); NativeWindow.Apply(this, Settings);
-        ResizeWidget(!heightChanged);
+        if (!Settings.ShowTodo) AnimateTodoFooter(false, false);
+        else if (IsMouseOver) AnimateTodoFooter(true);
+        UpdateTodoGeometry(); ResizeWidget(!heightChanged);
     }
     public void RequestSettingsPreview(bool scaleOnly = false)
     {
@@ -173,7 +237,7 @@ public sealed class MainWindow : Window
     }
     private void ResizeWidget(bool animate)
     {
-        double target = Math.Min(Settings.Scale, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / layout.Height));
+        double target = Math.Min(Settings.Scale, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (Settings.ShowTodo ? 44 : 0))));
         double start = widgetScale.ScaleX; int generation = ++resizeGeneration;
         double width = 356 * target, height = layout.Height * target;
         void Finish()
@@ -181,14 +245,15 @@ public sealed class MainWindow : Window
             if (generation != resizeGeneration) return;
             widgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null); widgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             widgetScale.ScaleX = widgetScale.ScaleY = target; layout.CacheMode = null;
-            Width = width; Height = height;
+            UpdateTodoGeometry();
+            Width = width; Height = footerAnimating ? Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + 44) * target) : layout.Height * target;
             if (IsLoaded && Top < SystemParameters.WorkArea.Bottom && Top + height > SystemParameters.WorkArea.Bottom)
                 Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - height - 12);
         }
         if (!animate || !IsLoaded || !Settings.SmoothResize || Math.Abs(start - target) < .0001) { Finish(); return; }
         // Resize the transparent HWND once to hold both sizes. Animate only the
         // content transform, then shrink the bounds and restore vector rendering.
-        double reserveScale = Math.Min(1.5, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / layout.Height));
+        double reserveScale = Math.Min(1.5, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (Settings.ShowTodo ? 44 : 0))));
         Width = Math.Max(Width, 356 * reserveScale); Height = Math.Max(Height, layout.Height * reserveScale);
         layout.CacheMode ??= new BitmapCache(1.5);
         var motion = new DoubleAnimation(start, target, TimeSpan.FromMilliseconds(150))
@@ -198,15 +263,39 @@ public sealed class MainWindow : Window
         widgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(start, target, motion.Duration)
         { EasingFunction = motion.EasingFunction }, HandoffBehavior.SnapshotAndReplace);
     }
+    private void UpdateMediaControls()
+    {
+        var area = WidgetLayout.Calculate(Settings).Sections.FirstOrDefault(s => s.Kind == WidgetSection.Media);
+        var m = State.Media;
+        var key = $"{area}|{m.Playing}|{m.Previous}|{m.Toggle}|{m.Next}|{Settings.Theme}";
+        if (key == mediaKey) return; mediaKey = key;
+        HoverHints.CloseTree(mediaHost); mediaHost.Children.Clear();
+        mediaHost.Visibility = area is null ? Visibility.Collapsed : Visibility.Visible;
+        if (area is null) return;
+        mediaHost.HorizontalAlignment = HorizontalAlignment.Left; mediaHost.VerticalAlignment = VerticalAlignment.Top;
+        mediaHost.Margin = new(113, area.Top + 62, 0, 0); mediaHost.Height = 32; mediaHost.Width = 140;
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var (command, icon, label, enabled) in new[] { ("previous", "previous", "上一首", m.Previous), ("toggle", m.Playing ? "pause" : "play", m.Playing ? "暂停" : "播放", m.Toggle), ("next", "next", "下一首", m.Next) })
+        {
+            var button = IconButton(icon, label, async () => await Engine.MediaCommandAsync(command));
+            button.Width = 44; button.Height = 30; button.IsEnabled = enabled; button.Opacity = enabled ? 1 : .3;
+            button.Content = new IconView(icon, Art.Brush(ThemePalette.Get(Settings.Theme).Text), 1.65) { Width = 20, Height = 20 };
+            row.Children.Add(button);
+        }
+        mediaHost.Children.Add(row);
+    }
     private void BuildTodo(WidgetLayout calculated)
     {
         HoverHints.CloseTree(todoHost);
-        todoHost.Children.Clear(); todoEditor = null;
+        todoHost.Children.Clear(); todoEditorHost.Children.Clear(); todoEditor = null;
         var area = calculated.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
         todoHost.Visibility = area is null ? Visibility.Collapsed : Visibility.Visible;
-        if (area is null) return;
+        todoEditorHost.Visibility = Settings.ShowTodo ? Visibility.Visible : Visibility.Collapsed;
+        if (!Settings.ShowTodo) return;
         todoHost.VerticalAlignment = VerticalAlignment.Top; todoHost.HorizontalAlignment = HorizontalAlignment.Left;
-        todoHost.Margin = new(30, area.Top, 0, 0); todoHost.Width = 296; todoHost.Height = area.Height;
+        todoHost.Margin = new(30, area?.Top ?? 0, 0, 0); todoHost.Width = 296; todoHost.Height = area?.Height ?? 0;
+        todoEditorHost.VerticalAlignment = VerticalAlignment.Top; todoEditorHost.HorizontalAlignment = HorizontalAlignment.Left;
+        todoEditorHost.Width = 296; todoEditorHost.Height = 30;
         var palette = ThemePalette.Get(Settings.Theme); var dark = palette.Dark;
         var rows = new StackPanel();
         foreach (var item in Settings.Todos.Where(t => !Settings.HideCompletedTodos || !t.Completed))
@@ -223,14 +312,18 @@ public sealed class MainWindow : Window
             check.Click += (_, _) => { item.Completed = check.IsChecked == true; ApplySettings(); SaveSettings(); };
             rows.Children.Add(check);
         }
-        todoHost.Children.Add(new ScrollViewer { Content = rows, Height = area.Height - 40, VerticalAlignment = VerticalAlignment.Top, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        if (area is not null) todoHost.Children.Add(new ScrollViewer { Content = rows, Height = area.Height, VerticalAlignment = VerticalAlignment.Top, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         var input = new TextBox { Background = Brushes.Transparent, BorderThickness = new(0), Foreground = Art.Brush(palette.Text), CaretBrush = Art.Brush(palette.Accent), FontSize = 12 * Settings.TextScale, FontWeight = FontWeight.FromOpenTypeWeight(Settings.TextWeight), Padding = new(5), MaxLength = 160, ToolTip = "输入待办，按 Enter 添加" };
         HoverHints.Set(input, "输入待办，按 Enter 添加");
         var inputRow = new Grid(); inputRow.ColumnDefinitions.Add(new()); inputRow.ColumnDefinitions.Add(new() { Width = new(30) }); inputRow.Children.Add(input);
+        var placeholder = new TextBlock { Text = "添加事件", FontSize = 12 * Settings.TextScale, Foreground = Art.Brush(palette.Secondary), Margin = new(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+        inputRow.Children.Add(placeholder);
+        input.TextChanged += (_, _) => placeholder.Visibility = input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         var add = IconButton("plus", "添加待办", () => AddTodo(input)); Grid.SetColumn(add, 1); inputRow.Children.Add(add);
         input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { AddTodo(input); e.Handled = true; } };
-        todoEditor = new Border { Child = inputRow, VerticalAlignment = VerticalAlignment.Bottom, Height = 30, CornerRadius = new(8), Background = Art.Brush(dark ? "#12FFFFFF" : "#408D9C83"), Opacity = IsMouseOver ? 1 : 0, IsHitTestVisible = IsMouseOver };
-        todoHost.Children.Add(todoEditor);
+        todoEditor = new Border { Child = inputRow, VerticalAlignment = VerticalAlignment.Bottom, Height = 30, CornerRadius = new(8), Background = Art.Brush(dark ? "#12FFFFFF" : "#408D9C83"), Opacity = 1 };
+        todoEditorHost.Children.Add(todoEditor);
+        input.GotKeyboardFocus += (_, _) => { todoHideDelay.Stop(); AnimateTodoFooter(true); };
         input.LostKeyboardFocus += (_, _) => { if (!IsMouseOver) SetHover(false); };
     }
     private void AddTodo(TextBox input)
@@ -259,6 +352,8 @@ public sealed class MainWindow : Window
         settingsWindow?.Close(); SaveSettings();
         tray.Visible = false; tray.Dispose();
         NativeWindow.UnregisterHotKey(new WindowInteropHelper(this).Handle, 0x4d5a);
+        if (hidNotification != IntPtr.Zero) { NativeWindow.UnregisterDeviceNotification(hidNotification);hidNotification=IntPtr.Zero; }
+        todoHideDelay.Stop(); AnimateTodoFooter(false, false);
         Hide(); await Engine.DisposeAsync(); Close(); Application.Current.Shutdown();
     }
 }

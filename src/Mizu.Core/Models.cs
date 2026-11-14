@@ -14,6 +14,7 @@ public sealed record Peripheral(
     int? Percent, bool? Charging, string Source, DateTimeOffset? ObservedAt,
     string? ContainerId = null, string? Detail = null)
 {
+    [JsonIgnore] public string? BluetoothAddress { get; init; }
     public bool IsFresh(DateTimeOffset now) => ObservedAt is { } at && now >= at && now - at < TimeSpan.FromMinutes(3);
 }
 
@@ -23,11 +24,15 @@ public sealed record WeatherDay(string Date, double High, double Low, int Code);
 public sealed record WeatherSnapshot(double Celsius, int Code, bool IsDay, double High, double Low,
     double WindKph, int Humidity, WeatherHour[] Hours, DateTimeOffset UpdatedAt)
 {
+    public string Source { get; init; } = "Open-Meteo";
+    public int HourResolution { get; init; } = 1;
+    public bool DayPhaseKnown { get; init; } = true;
     public WeatherHour? CurrentHour { get; init; }
     public WeatherDay[] Days { get; init; } = [];
 }
 public sealed record Place(string Name, string Country, string? Region, double Latitude, double Longitude)
 {
+    public string? TimeZoneId { get; init; }
     public override string ToString() => string.Join(" · ", new[] { Name, Region, Country }.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct());
 }
 

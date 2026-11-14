@@ -14,20 +14,50 @@ namespace Mizu.Widget;
 public sealed class SettingsWindow : Window
 {
     private readonly MainWindow widget;
+    private readonly SettingsTheme theme;
     private readonly AppSettings settings;
-    private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Foreground = Art.Brush("#8B7758"), FontSize = 12, Margin = new(0, 12, 0, 0) };
+    private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new(0, 12, 0, 0) };
+    private readonly StackPanel probeList = new();
     private readonly StackPanel deviceList = new();
     private readonly StackPanel todoList = new();
     private readonly List<CheckBox> todoVisibilityToggles = [];
+    private readonly List<CheckBox> poetryVisibilityToggles = [];
     private readonly CancellationTokenSource lifetime = new();
     private readonly System.Windows.Threading.DispatcherTimer saveDelay = new() { Interval = TimeSpan.FromMilliseconds(350) };
     private bool adjustingSlider, pendingSave;
     public SettingsWindow(MainWindow widget)
     {
         this.widget = widget; settings = widget.Settings;
+        theme = new(this);
+        theme.Brush("#40573D");
+        theme.Brush("#4B5843");
+        theme.Brush("#5C7650");
+        theme.Brush("#7B8674");
+        theme.Brush("#8A9F7B");
+        theme.Brush("#8B9980");
+        theme.Brush("#8B9F7F");
+        theme.Brush("#8EA37F");
+        theme.Brush("#90A37E");
+        theme.Brush("#9AAC8C");
+        theme.Brush("#D7DFCE");
+        theme.Brush("#D9E2CF");
+        theme.Brush("#DAE1D2");
+        theme.Brush("#DDE2D6");
+        theme.Brush("#DEE4D6");
+        theme.Brush("#DEE6D7");
+        theme.Brush("#DFE5D7");
+        theme.Brush("#E1E8D8");
+        theme.Brush("#E7EBE1");
+        theme.Brush("#E8EBE1");
+        theme.Brush("#E8EDDF");
+        theme.Brush("#F0F3EA");
+        theme.Brush("#F1F4EB");
+        theme.Brush("#FCFCF8");
+        theme.Brush("#FCFDF8");
+        theme.Apply(settings.Theme); status.Foreground = theme.Brush("#8B7758");
         Title = "Mizu · 设置"; Width = 780; Height = 790; MinWidth = 680; MinHeight = 560;
         MaxHeight = SystemParameters.WorkArea.Height - 24;
-        WindowStartupLocation = WindowStartupLocation.CenterScreen; Background = Art.Brush("#F0F1EC"); Foreground = Art.Brush("#41483E");
+        WindowStartupLocation = WindowStartupLocation.CenterScreen; Background = theme.Brush("#F0F1EC"); Foreground = theme.Brush("#41483E");
         FontFamily = new("Segoe UI, Microsoft YaHei UI"); FontSize = 13;
         var root = new Grid { Margin = new(24, 22, 24, 20), Background = Background };
         root.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/Mizu;component/SettingsStyles.xaml", UriKind.Relative) });
@@ -37,22 +67,23 @@ public sealed class SettingsWindow : Window
         root.RowDefinitions.Add(new() { Height = GridLength.Auto }); root.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) }); root.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var heading = new StackPanel { Margin = new(0, 0, 0, 18) };
         heading.Children.Add(new TextBlock { Text = "Mizu", FontSize = 28, FontWeight = FontWeights.Light });
-        heading.Children.Add(new TextBlock { Text = "偏好设置", Margin = new(1, 5, 0, 0), Foreground = Art.Brush("#8D9487"), FontSize = 12 }); root.Children.Add(heading);
+        heading.Children.Add(new TextBlock { Text = "偏好设置", Margin = new(1, 5, 0, 0), Foreground = theme.Brush("#8D9487"), FontSize = 12 }); root.Children.Add(heading);
         var tabs = new TabControl { Background = Brushes.Transparent, BorderThickness = new(0), TabStripPlacement = Dock.Left };
-        AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push());
+        AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push());
         Grid.SetRow(tabs, 1); root.Children.Add(tabs); Grid.SetRow(status, 2); root.Children.Add(status); Content = root;
         saveDelay.Tick += (_, _) => FlushPendingSave();
         Closed += (_, _) => { FlushPendingSave(); lifetime.Cancel(); lifetime.Dispose(); };
+        SourceInitialized += (_, _) => theme.Apply(settings.Theme);
         BuildDevices(); BuildTodoList();
         Activated += (_, _) => { BuildDevices(); BuildTodoList(); };
     }
-    private static void AddTab(TabControl tabs, string title, UIElement content) => tabs.Items.Add(new TabItem
-    { Header = new TextBlock { Text = title, Margin = new(16, 13, 16, 13) }, Content = new Border { Background = Art.Brush("#FCFCF8"), CornerRadius = new(18), Padding = new(24, 20, 15, 16), Child = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } } });
-    private static TextBlock Label(string text, bool detail = false) => new() { Text = text, FontSize = detail ? 12 : 13, TextWrapping = TextWrapping.Wrap,
-        Foreground = Art.Brush(detail ? "#8A9183" : "#434B3E"), Margin = new(0, 0, 0, detail ? 15 : 9), LineHeight = detail ? 20 : double.NaN };
-    private static Button ActionButton(string text, RoutedEventHandler action)
+    private void AddTab(TabControl tabs, string title, UIElement content) => tabs.Items.Add(new TabItem
+    { Header = new TextBlock { Text = title, Margin = new(16, 13, 16, 13) }, Content = new Border { Background = theme.Brush("#FCFCF8"), CornerRadius = new(18), Padding = new(24, 20, 15, 16), Child = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } } });
+    private TextBlock Label(string text, bool detail = false) => new() { Text = text, FontSize = detail ? 12 : 13, TextWrapping = TextWrapping.Wrap,
+        Foreground = theme.Brush(detail ? "#8A9183" : "#434B3E"), Margin = new(0, 0, 0, detail ? 15 : 9), LineHeight = detail ? 20 : double.NaN };
+    private Button ActionButton(string text, RoutedEventHandler action)
     {
-        var button = new Button { Content = text, Padding = new(15, 8, 15, 8), Margin = new(0, 6, 8, 6), Background = Art.Brush("#E5E8DC"), BorderBrush = Art.Brush("#D5DACE"), Foreground = Art.Brush("#4A5945"), Cursor = Cursors.Hand };
+        var button = new Button { Content = text, Padding = new(15, 8, 15, 8), Margin = new(0, 6, 8, 6), Background = theme.Brush("#E5E8DC"), BorderBrush = theme.Brush("#D5DACE"), Foreground = theme.Brush("#4A5945"), Cursor = Cursors.Hand };
         button.Click += action; return button;
     }
     private CheckBox Toggle(string title, bool value, Action<bool> apply)
@@ -63,8 +94,11 @@ public sealed class SettingsWindow : Window
             apply(enabled);
             if (title is "待办清单" or "在组件上显示待办")
                 foreach (var other in todoVisibilityToggles.Where(t => t != check && t.IsChecked != enabled)) other.IsChecked = enabled;
+            if (title is "每日诗词" or "开启每日诗词")
+                foreach (var other in poetryVisibilityToggles.Where(t => t != check && t.IsChecked != enabled)) other.IsChecked = enabled;
         }
         if (title is "待办清单" or "在组件上显示待办") todoVisibilityToggles.Add(check);
+        if (title is "每日诗词" or "开启每日诗词") poetryVisibilityToggles.Add(check);
         check.Checked += (_, _) => Set(true); check.Unchecked += (_, _) => Set(false); return check;
     }
     private UIElement SliderRow(string title, double value, double min, double max, double step, string format, Action<double> apply, bool continuous = false)
@@ -73,7 +107,7 @@ public sealed class SettingsWindow : Window
         var label = Label(title); label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new(0); grid.Children.Add(label);
         var slider = new Slider { Minimum = min, Maximum = max, Value = value, TickFrequency = step, SmallChange = step, IsSnapToTickEnabled = !continuous, VerticalAlignment = VerticalAlignment.Center, Margin = new(4, 0, 12, 0), ToolTip = null };
         Grid.SetColumn(slider, 1); grid.Children.Add(slider);
-        var number = new TextBlock { Text = value.ToString(format), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, Foreground = Art.Brush("#87917C") };
+        var number = new TextBlock { Text = value.ToString(format), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, Foreground = theme.Brush("#87917C") };
         Grid.SetColumn(number, 2); grid.Children.Add(number);
         slider.ValueChanged += (_, e) =>
         {
@@ -84,7 +118,7 @@ public sealed class SettingsWindow : Window
     private void FlushPendingSave() { saveDelay.Stop(); if (pendingSave) { pendingSave = false; widget.SaveSettings(); } }
     private void Save(bool scaleOnly = false)
     {
-        settings.Validate();
+        settings.Validate(); theme.Apply(settings.Theme);
         if (adjustingSlider)
         {
             widget.RequestSettingsPreview(scaleOnly); pendingSave = true; saveDelay.Stop(); saveDelay.Start();
@@ -128,6 +162,26 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Toggle("CPU 负载", settings.ShowCpu, v => { settings.ShowCpu = v; Save(); }));
         panel.Children.Add(Toggle("内存占用", settings.ShowMemory, v => { settings.ShowMemory = v; Save(); }));
         panel.Children.Add(Toggle("CPU 温度", settings.ShowTemperature, v => { settings.ShowTemperature = v; Save(); }));
+        panel.Children.Add(Toggle("网络状态与上下行", settings.ShowNetwork, v => { settings.ShowNetwork = v; Save(); }));
+        panel.Children.Add(Label("显示当前活动网卡速率。开启后每 2 秒 ICMP 探测一次；丢包率为最近 60 次到目标的探测失败比例，不代表所有网络流量。", true));
+        panel.Children.Add(Toggle("在组件显示探测 IP", settings.ShowNetworkProbeIp, v => { settings.ShowNetworkProbeIp = v; Save(); }));
+        panel.Children.Add(Label("最多 8 个 IPv4 / IPv6，各自统计最近 60 次探测。关闭 IP 显示后，组件及悬停提示都只显示探测序号；上下行仍是网卡总速率。", true));
+        panel.Children.Add(new ScrollViewer { Content = probeList, MaxHeight = 240, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        var newProbe = new TextBox { MaxLength = 64, Padding = new(8), Background = theme.Brush("#FAFAF5"), BorderBrush = theme.Brush("#DBDFD3"), Margin = new(0,5,0,4) };
+        panel.Children.Add(Label("添加探测 IP（例如网关、DNS 或服务器）", true));panel.Children.Add(newProbe);
+        void AddProbe() {
+            var address = NetworkService.NormalizeTarget(newProbe.Text);
+            var targets = settings.NetworkProbeTargets ?? new List<string> { settings.NetworkProbeTarget };
+            if (address is null) { status.Text = "请输入有效的 IPv4 或 IPv6 单播地址"; return; }
+            if (targets.Contains(address,StringComparer.OrdinalIgnoreCase)) { status.Text = "此 IP 已在列表中"; return; }
+            if (targets.Count >= 8) { status.Text = "最多 8 个探测 IP"; return; }
+            settings.NetworkProbeTargets = targets.Append(address).ToList(); Save(); newProbe.Clear(); BuildProbeList();
+        }
+        newProbe.KeyDown += (_, e) => { if(e.Key == Key.Enter) { AddProbe();e.Handled=true; } };
+        panel.Children.Add(ActionButton("添加 IP", (_, _) => AddProbe())); BuildProbeList();
+        panel.Children.Add(Toggle("当前播放与媒体控制", settings.ShowMedia, v => { settings.ShowMedia = v; Save(); }));
+        panel.Children.Add(Label("读取 Windows 当前媒体会话。播放器需要支持系统媒体控制；媒体功能要求 Windows 10 1809+。", true));
+        panel.Children.Add(Toggle("每日诗词", settings.ShowPoetry, v => { settings.ShowPoetry = v; Save(); }));
         panel.Children.Add(Toggle("待办清单", settings.ShowTodo, v => { settings.ShowTodo = v; Save(); }));
         panel.Children.Add(new Separator { Margin = new(0, 16, 0, 16) });
         panel.Children.Add(Toggle("精简布局", settings.CompactMode, v => { settings.CompactMode = v; Save(); }));
@@ -137,15 +191,34 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Label("设置即时生效并自动保存。关闭显示只影响组件内容，已启用的阈值提醒继续工作。内容较多时整体缩小以适应屏幕高度。", true));
         return panel;
     }
+    private void BuildProbeList()
+    {
+        probeList.Children.Clear();
+        var targets = settings.NetworkProbeTargets ?? new List<string> { settings.NetworkProbeTarget };
+        foreach (var address in targets) {
+            var row = new Grid { Margin = new(0,3,0,3) }; row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new() { Width = new(42) });
+            var input = new TextBox { Text = address, MaxLength = 64, Padding = new(8), Background = theme.Brush("#FAFAF5"), BorderBrush = theme.Brush("#DBDFD3") };
+            input.LostFocus += (_, _) => {
+                if(input.Text == address) return;
+                var replacement = NetworkService.NormalizeTarget(input.Text);
+                var current = settings.NetworkProbeTargets ?? targets;
+                if(replacement is null || (replacement != address && current.Contains(replacement,StringComparer.OrdinalIgnoreCase))) { input.Text=address;status.Text="IP 无效或已存在";return; }
+                settings.NetworkProbeTargets = current.Select(ip => ip == address ? replacement : ip).ToList();Save();BuildProbeList();
+            };
+            row.Children.Add(input);
+            var remove = ActionButton("×", (_, _) => { settings.NetworkProbeTargets = (settings.NetworkProbeTargets ?? targets).Where(ip => ip != address).ToList();Save();BuildProbeList(); });
+            remove.Padding=new(6);remove.Margin=new(5,0,0,0);HoverHints.Set(remove,"删除探测 IP");Grid.SetColumn(remove,1);row.Children.Add(remove);probeList.Children.Add(row);
+        }
+    }
     private UIElement Weather()
     {
         var panel = new StackPanel { Margin = new(1, 8, 12, 0) };
         panel.Children.Add(Label("选择城市"));
-        panel.Children.Add(Label("天气来自 Open-Meteo，每 20 分钟更新。只发送所选城市坐标，无需账号。", true));
-        var query = new TextBox { Padding = new(10), FontSize = 15, Text = settings.Location?.Name ?? "", BorderBrush = Art.Brush("#D8DCCD"), Background = Art.Brush("#FAFAF6") };
+        panel.Children.Add(Label("天气来自 Open-Meteo，成功后每 20 分钟更新；首次失败或后续更新失败时每 30 秒重试。只发送所选城市坐标。", true));
+        var query = new TextBox { Padding = new(10), FontSize = 15, Text = settings.Location?.Name ?? "", BorderBrush = theme.Brush("#D8DCCD"), Background = theme.Brush("#FAFAF6") };
         panel.Children.Add(query);
         var current = Label(settings.Location?.ToString() ?? "尚未选择城市", true); current.Margin = new(0, 15, 0, 10);
-        var choices = new ListBox { MinHeight = 130, MaxHeight = 220, Visibility = Visibility.Collapsed, Background = Brushes.Transparent, BorderBrush = Art.Brush("#D8DCCD"), Margin = new(0, 6, 0, 15) };
+        var choices = new ListBox { MinHeight = 130, MaxHeight = 220, Visibility = Visibility.Collapsed, Background = Brushes.Transparent, BorderBrush = theme.Brush("#D8DCCD"), Margin = new(0, 6, 0, 15) };
         var searchVersion = 0;
         async Task Search()
         {
@@ -171,6 +244,13 @@ public sealed class SettingsWindow : Window
             await widget.Engine.RefreshWeatherAsync(); status.Text = widget.State.WeatherFailed ? "天气暂不可用，稍后会自动重试" : "城市已保存";
         }));
         panel.Children.Add(new Separator { Margin = new(0, 16, 0, 16) });
+        panel.Children.Add(Toggle("天气主源异常时自动切换备用", settings.WeatherBackupEnabled, v => { settings.WeatherBackupEnabled = v; Save(); }));
+        panel.Children.Add(Label("主源 Open-Meteo，备用 wttr.in。备用预报约 3 天、每 3 小时一段，缺少的数据显示 —；两者失败时保留已有天气缓存。", true));
+        panel.Children.Add(Label("天气缓存"));
+        panel.Children.Add(Toggle("启动时读取本地天气缓存", settings.WeatherCacheEnabled, v => { settings.WeatherCacheEnabled = v; Save(); if (!v) widget.Engine.ClearWeatherCache(); }));
+        panel.Children.Add(SliderRow("缓存有效期", settings.WeatherCacheHours, 1, 72, 1, "0' 小时'", v => { settings.WeatherCacheHours = (int)v; Save(); }));
+        panel.Children.Add(Label("缓存按城市匹配，过期不读取；先显示缓存，再立即联网。悬停可查看原始更新时间。", true));
+        panel.Children.Add(ActionButton("清除天气缓存并刷新", async (_, _) => { widget.Engine.ClearWeatherCache(); await widget.Engine.RefreshWeatherAsync(); status.Text = widget.State.WeatherFailed ? "已清除缓存，30 秒后自动重试" : "天气已刷新"; }));
         panel.Children.Add(Label("天气显示"));
         panel.Children.Add(Label("可组合当前温度、今日温差、小时预报与未来几天。", true));
         var currentCheck = Toggle("当前温度", settings.WeatherCurrent, v => { settings.WeatherCurrent = v; Save(); });
@@ -191,6 +271,17 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(SliderRow("未来天数", settings.ForecastDays, 1, 7, 1, "0' 天'", v => { settings.ForecastDays = (int)v; Save(); }));
         panel.Children.Add(Label("小时与日期使用所选城市的当地时间，未来天数从明天开始。\n天气数据：Open-Meteo · CC BY 4.0。离线时保留上次读数。", true)); return panel;
     }
+    private UIElement Poetry()
+    {
+        var panel = new StackPanel { Margin = new(1, 8, 12, 0) };
+        panel.Children.Add(Toggle("开启每日诗词", settings.ShowPoetry, v => { settings.ShowPoetry = v; Save(); }));
+        panel.Children.Add(Toggle("每天自动更新", settings.PoetryAutoRefresh, v => { settings.PoetryAutoRefresh = v; Save(); }));
+        panel.Children.Add(Label("每天更新一条诗词；在线异常时使用已有缓存或 30 条内置公版诗句。关闭后不发起诗词请求。", true));
+        panel.Children.Add(ActionButton("刷新诗词", async (_, _) => { if (!settings.ShowPoetry) { status.Text = "请先开启每日诗词"; return; } status.Text = "正在更新诗词…"; await widget.Engine.RefreshPoetryAsync(true); status.Text = widget.State.PoetryFailed ? "在线暂不可用，已使用缓存或内置诗库" : "诗词已更新"; }));
+        panel.Children.Add(Label("诗句统一为一行，右下角显示朝代首字与诗名；较长内容适当缩小或省略。完整诗句、朝代、作者与出处可悬停查看。", true));
+        panel.Children.Add(Label("来源：今日诗词。服务会根据来源 IP 推测地区用于推荐；手动刷新可能返回同一条缓存推荐。", true));
+        return panel;
+    }
     private UIElement Todos()
     {
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
@@ -198,7 +289,7 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Toggle("在组件上显示待办", settings.ShowTodo, v => { settings.ShowTodo = v; Save(); }));
         panel.Children.Add(Toggle("隐藏已完成事项", settings.HideCompletedTodos, v => { settings.HideCompletedTodos = v; Save(); }));
         panel.Children.Add(SliderRow("可见行数", settings.TodoVisibleRows, 1, 8, 1, "0' 行'", v => { settings.TodoVisibleRows = (int)v; Save(); }));
-        var input = new TextBox { Padding = new(10), MaxLength = 160, ToolTip = "输入新待办，按 Enter 添加", Background = Art.Brush("#F2F4ED"), BorderBrush = Art.Brush("#DDE2D6") };
+        var input = new TextBox { Padding = new(10), MaxLength = 160, ToolTip = "输入新待办，按 Enter 添加", Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
         HoverHints.Set(input, "输入新待办，按 Enter 添加");
         panel.Children.Add(input);
         void Add()
@@ -220,7 +311,7 @@ public sealed class SettingsWindow : Window
         {
             var row = new Grid { Margin = new(0, 5, 0, 5) }; row.ColumnDefinitions.Add(new() { Width = new(44) }); row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = new(45) });
             var done = Toggle("", item.Completed, v => { item.Completed = v; Save(); }); row.Children.Add(done);
-            var text = new TextBox { Text = item.Text, MaxLength = 160, Padding = new(9), Background = Art.Brush("#F2F4ED"), BorderBrush = Art.Brush("#DFE3D8") };
+            var text = new TextBox { Text = item.Text, MaxLength = 160, Padding = new(9), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DFE3D8") };
             text.LostKeyboardFocus += (_, _) => { if (!string.IsNullOrWhiteSpace(text.Text)) { item.Text = text.Text.Trim(); Save(); } else text.Text = item.Text; };
             Grid.SetColumn(text, 1); row.Children.Add(text);
             var delete = ActionButton("×", (_, _) => { settings.Todos.Remove(item); Save(); BuildTodoList(); }); delete.Padding = new(8, 4, 8, 4); HoverHints.Set(delete, "删除待办"); Grid.SetColumn(delete, 2); row.Children.Add(delete);
@@ -292,7 +383,7 @@ public sealed class SettingsWindow : Window
         foreach (var device in widget.State.Devices)
         {
             var panel = new StackPanel { Margin = new(0, 10, 0, 12) };
-            var name = new TextBox { Text = settings.NameOverrides.GetValueOrDefault(device.Id, device.Name), Padding = new(7), Background = Art.Brush("#FAFAF5"), BorderBrush = Art.Brush("#DBDFD3") };
+            var name = new TextBox { Text = settings.NameOverrides.GetValueOrDefault(device.Id, device.Name), Padding = new(7), Background = theme.Brush("#FAFAF5"), BorderBrush = theme.Brush("#DBDFD3") };
             name.LostKeyboardFocus += (_, _) => { var text = name.Text.Trim(); if (text.Length > 0) settings.NameOverrides[device.Id] = text[..Math.Min(80, text.Length)]; Save(); }; panel.Children.Add(name);
             panel.Children.Add(Label($"{device.Percent?.ToString() ?? "—"}% · {device.Link} · {device.State}", true));
             var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -307,7 +398,7 @@ public sealed class SettingsWindow : Window
         var panel = new StackPanel { Margin = new(1, 8, 12, 0) };
         panel.Children.Add(Label("PushPlus"));
         panel.Children.Add(Label("填写你自己的 Token。启用后，仅在达到阈值时发送提醒。", true));
-        var token = new PasswordBox { Password = SettingsStore.Unprotect(settings.ProtectedPushToken) ?? "", Padding = new(10), Background = Art.Brush("#FAFAF5"), BorderBrush = Art.Brush("#D8DCCD") }; panel.Children.Add(token);
+        var token = new PasswordBox { Password = SettingsStore.Unprotect(settings.ProtectedPushToken) ?? "", Padding = new(10), Background = theme.Brush("#FAFAF5"), BorderBrush = theme.Brush("#D8DCCD") }; panel.Children.Add(token);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         buttons.Children.Add(ActionButton("保存绑定", (_, _) => { settings.ProtectedPushToken = SettingsStore.Protect(token.Password); Save(); status.Text = token.Password.Length > 0 ? "绑定已保存" : "绑定已清除"; }));
         buttons.Children.Add(ActionButton("发送测试", async (_, _) =>

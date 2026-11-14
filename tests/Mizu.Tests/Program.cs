@@ -6,6 +6,7 @@ using Mizu.Core;
 using Mizu.Core.Devices;
 using Mizu.Core.Services;
 
+try {
 var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
@@ -97,7 +98,9 @@ Check(TemperatureDriver.GetUnsupportedReason(System.Runtime.InteropServices.Arch
 Check(TemperatureDriver.GetUnsupportedReason(System.Runtime.InteropServices.Architecture.X64, new Version(10, 0, 14393)) is not null, "Older Windows builds cannot install the bundled driver");
 Check(TemperatureDriver.GetUnsupportedReason(System.Runtime.InteropServices.Architecture.X86, new Version(10, 0, 26100)) is not null && TemperatureDriver.GetUnsupportedReason(System.Runtime.InteropServices.Architecture.Arm64, new Version(10, 0, 26100)) is not null, "Driver support uses OS architecture, including emulated apps");
 Check(TemperatureDriver.InterpretExitCode(0).State == DriverInstallState.Installed && TemperatureDriver.InterpretExitCode(3010).State == DriverInstallState.RebootRequired && TemperatureDriver.InterpretExitCode(5).State == DriverInstallState.Failed, "Installer success, reboot and failure are distinct");
-var installer = Path.GetFullPath("vendor/PawnIO/PawnIO_setup.exe");
+var sourceRoot = new DirectoryInfo(AppContext.BaseDirectory);
+while (sourceRoot is not null && !File.Exists(Path.Combine(sourceRoot.FullName, "Mizu.slnx"))) sourceRoot = sourceRoot.Parent;
+var installer = Path.Combine(sourceRoot?.FullName ?? Environment.CurrentDirectory, "vendor/PawnIO/PawnIO_setup.exe");
 Check(File.Exists(installer) && TemperatureDriver.MatchesInstallerHash(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(installer)))), "Bundled installer exactly matches the signed upstream release");
 Check(!TemperatureDriver.MatchesInstallerHash(new string('0', 64)), "Tampered installer is rejected before elevation");
 var handler = new FakeHandler("{\"code\":200,\"data\":\"accepted\"}");
@@ -112,6 +115,50 @@ string temp = Path.Combine(Path.GetTempPath(), "mizu-tests-" + Guid.NewGuid().To
 Directory.CreateDirectory(temp);
 try
 {
+    var cacheFile = Path.Combine(temp, "weather-cache.json");
+    var cache = new WeatherCache(cacheFile);
+    var cacheCity = new Place("Example", "", null, 30, 120);
+    Check(cache.Load(cacheCity, 12, now) is null, "Missing cache is empty");
+    cache.Save(cacheCity, weather);
+    Check(cache.Load(cacheCity, 12, now.AddHours(1))?.Celsius == weather.Celsius, "Weather persists across restarts");
+    Check(cache.Load(cacheCity with { Longitude = 121 }, 12, now) is null, "Never show a different city's cache");
+    Check(cache.Load(cacheCity, 1, now.AddHours(2)) is null, "Expired cache is rejected");
+    Check(cache.Load(cacheCity, 12, now.AddMinutes(-1)) is null, "Future dated cache is rejected");
+    File.WriteAllText(cacheFile, "{broken");
+    Check(cache.Load(cacheCity, 12, now) is null, "Corrupt cache cannot crash startup");
+    cache.Save(cacheCity, weather); cache.Clear();
+    Check(!File.Exists(cacheFile), "Cache clear removes only the weather file");
+    using var poetryJson = JsonDocument.Parse("""{"content":"海内存知己，天涯若比邻。","author":"王勃","origin":"送杜少府之任蜀州"}""");
+    var poem = PoetryService.Parse(poetryJson.RootElement, now);
+    Check(poem.Lines(1).SequenceEqual(new[] { "海内存知己，" }), "One verse retains its original punctuation");
+    Check(poem.Lines(2).SequenceEqual(new[] { "海内存知己，", "天涯若比邻。" }), "Two verses belong to the same quote");
+    var poemPath = Path.Combine(temp, "poetry-cache.json");
+    using var poems = new PoetryService(cachePath: poemPath); poems.Save(poem);
+    Check(poems.Load()?.Origin == poem.Origin, "Poetry persists with its attribution");
+    File.WriteAllText(poemPath, "broken"); Check(poems.Load() is null, "Invalid poetry cache cannot break startup");
+    var poemSettings = new AppSettings { ShowPoetry = true, PoetryLines = 2 }; poemSettings.Validate();
+    Check(poemSettings.PoetryLines == 1 && WidgetLayout.Calculate(poemSettings).Sections.Single(s => s.Kind == WidgetSection.Poetry).Height == 64, "Legacy verse settings migrate to one physical line");
+    using var richPoemJson = JsonDocument.Parse("""{"status":"success","data":{"content":"海内存知己，天涯若比邻。","origin":{"title":"送杜少府之任蜀州","dynasty":"唐代","author":"王勃"}}}""");
+    var richPoem = PoetryService.Parse(richPoemJson.RootElement, now);
+    Check(richPoem.Dynasty == "唐代" && richPoem.Author == "王勃" && richPoem.Origin == "送杜少府之任蜀州", "V2 metadata is read from the matching source record");
+    using var badPoem = JsonDocument.Parse("""{"data":{"content":"诗句","origin":{"title":"出处未全"}}}""");
+    bool provenanceRejected = false; try { PoetryService.Parse(badPoem.RootElement, now); } catch(JsonException) { provenanceRejected = true; }
+    Check(provenanceRejected, "Incomplete online metadata is rejected so the independent fallback can be used");
+    poems.Save(richPoem); Check(poems.Load()?.Dynasty == "唐代", "Dynasty survives cache persistence");
+    var onlineBeforeFallback = File.ReadAllText(poemPath);
+    poems.Save(OfflinePoetry.Pick(now.AddSeconds(1)));
+    Check(File.ReadAllText(poemPath) == onlineBeforeFallback, "Offline selection never overwrites the successful online cache");
+    Check(poems.Load()?.Source == "内置公版诗库", "Latest offline selection survives restart independently");
+    var todoLayout = new AppSettings { ShowTodo = true };
+    var emptyTodoHeight = WidgetLayout.Calculate(todoLayout).Height;
+    todoLayout.ShowTodo = false;
+    Check(WidgetLayout.Calculate(todoLayout).Height == emptyTodoHeight, "Empty todo adds absolutely no reserved height");
+    todoLayout.ShowTodo = true; todoLayout.Todos.Add(new() { Text = "Task" });
+    Check(WidgetLayout.Calculate(todoLayout).Sections.Any(s => s.Kind == WidgetSection.Todo), "Todo section appears after first task");
+    todoLayout.Todos[0].Completed = true;
+    Check(!WidgetLayout.Calculate(todoLayout).Sections.Any(s => s.Kind == WidgetSection.Todo), "Completing the last visible task removes its section");
+    poemSettings.ShowPoetry = false;
+    Check(!WidgetLayout.Calculate(poemSettings).Sections.Any(s => s.Kind == WidgetSection.Poetry), "Poetry can be removed from layout");
     var store = new SettingsStore(Path.Combine(temp, "settings.json"));
     settings.Scale = 99; settings.ProtectedPushToken = SettingsStore.Protect("test-private-token"); store.Save(settings);
     var restored = store.Load();
@@ -139,11 +186,92 @@ Check(pager.Advance(0, 120, 4, 1600) == 0, "First page does not wrap backwards")
 var fineWheel = new DevicePager();
 Check(fineWheel.Advance(0, -30, 6, 1000) == 0 && fineWheel.Advance(0, -30, 6, 1010) == 0 && fineWheel.Advance(0, -30, 6, 1020) == 0 && fineWheel.Advance(0, -30, 6, 1030) == 1, "High-resolution wheel deltas accumulate to one page turn");
 foreach (var color in new[] { "navy", "pink", "lavender" }) { var themeSetting = new AppSettings { Theme = color }; themeSetting.Validate(); Check(themeSetting.Theme == color, "Preserve color theme " + color); }
+var losses = new LossWindow();
+Check(losses.Percent is null, "No probe is not zero loss");
+losses.Add(true); losses.Add(false);
+Check(losses.Percent == 50, "Loss counts unsuccessful probes");
+for (int i = 0; i < 60; i++) losses.Add(true);
+Check(losses.Count == 60 && losses.Percent == 0, "Rolling loss expires old failures");
+losses.Clear(); Check(losses.Count == 0 && losses.Percent is null, "Target changes reset loss history");
+Check(NetworkService.Rate(100, 300, 2) == 100, "Network bytes normalized by elapsed time");
+Check(NetworkService.Rate(300, 100, 2) is null && NetworkService.Rate(0, 1, 0) is null, "Reset counters do not create negative rates");
+for (int mask = 0; mask < 4; mask++) {
+    var modules = new AppSettings { ShowNetwork = (mask & 1) != 0, ShowMedia = (mask & 2) != 0 };
+    var sections = WidgetLayout.Calculate(modules).Sections;
+    Check(sections.Any(s => s.Kind == WidgetSection.Network) == modules.ShowNetwork && sections.Any(s => s.Kind == WidgetSection.Media) == modules.ShowMedia, "Independent network and media visibility");
+    Check(sections.Zip(sections.Skip(1)).All(pair => pair.First.Top + pair.First.Height < pair.Second.Top), "New modules do not overlap");
+}
+var probeSettings = new AppSettings { NetworkProbeTarget = "bad://target" }; probeSettings.Validate();
+Check(probeSettings.NetworkProbeTarget == "1.1.1.1", "Invalid probe restored safely");
+var migratedProbes = new AppSettings { NetworkProbeTarget = "8.8.4.4" }; migratedProbes.Validate();
+Check(migratedProbes.NetworkProbeTargets!.SequenceEqual(new[] { "8.8.4.4" }), "Legacy single IP migrates without changing its address");
+var multiProbes = new AppSettings { NetworkProbeTargets = ["1.1.1.1", "1.1.1.1", "2001:db8::1", "2001:0db8:0:0:0:0:0:1", "bad", "0.0.0.0"] }; multiProbes.Validate();
+Check(multiProbes.NetworkProbeTargets!.SequenceEqual(new[] { "1.1.1.1", "2001:db8::1" }), "Probe list normalizes IPv6 and removes duplicate or invalid addresses");
+multiProbes.NetworkProbeTargets = []; multiProbes.Validate(); Check(multiProbes.NetworkProbeTargets.Count == 0, "All probes can be deleted while retaining network rates");
+Check(NetworkService.NormalizeTarget("224.0.0.1") is null && NetworkService.NormalizeTarget("ff02::1") is null && NetworkService.NormalizeTarget("127.0.0.1") == "127.0.0.1", "Only literal unicast probe targets are accepted");
+using (var sampleStop = new CancellationTokenSource(TimeSpan.FromSeconds(5))) {
+    var sampleService = new NetworkService();
+    var firstProbes = await sampleService.SampleAsync(new[] { "127.0.0.1", "::1" }, sampleStop.Token);
+    var nextProbes = await sampleService.SampleAsync(new[] { "127.0.0.1", "127.0.0.2" }, sampleStop.Token);
+    Check(firstProbes.Targets.Length == 2 && nextProbes.Targets.Length == 2, "Each configured IP receives its own result");
+    Check(!nextProbes.Connected || (nextProbes.Targets[0].Probes == 2 && nextProbes.Targets[1].Probes == 1), "Existing probe history survives edits while a new target starts fresh");
+}
+var bluetoothContainer = Guid.NewGuid().ToString();
+var btRoot = new Mizu.Core.Native.PnpNode("BTHLE\\DEV_AABBCCDDEEFF\\1", "ATK", "Bluetooth", bluetoothContainer, "", 75, true);
+var btMouse = new Mizu.Core.Native.PnpNode("HID\\MOUSE", "HID Mouse", "Mouse", bluetoothContainer, btRoot.InstanceId, null, true);
+var liveLink = new BluetoothLink("aep-mouse", "ATK A9", Guid.NewGuid().ToString(), "aa:bb:cc:dd:ee:ff", false, PeripheralKind.Mouse);
+var btOffline = await new WindowsBatteryProvider(new[] { btRoot, btMouse }, [], new[] { liveLink }).ScanAsync(CancellationToken.None);
+Check(btOffline.Count == 1 && btOffline[0].State == LinkState.Offline, "Real Bluetooth disconnect overrides stale PnP connected state");
+var btOnline = await new WindowsBatteryProvider(new[] { btRoot, btMouse }, [], new[] { liveLink with { Connected = true } }).ScanAsync(CancellationToken.None);
+Check(btOnline.Count == 1 && btOnline[0].State == LinkState.Online && btOnline[0].Link == LinkKind.Bluetooth && btOnline[0].Kind == PeripheralKind.Mouse, "A paired Bluetooth mouse is classified and published on connection");
+var btWithoutBattery = await new WindowsBatteryProvider(new[] { btRoot with { Battery = null }, btMouse }, [], new[] { liveLink with { Connected = true } }).ScanAsync(CancellationToken.None);
+Check(btWithoutBattery.Count == 1 && btWithoutBattery[0].State == LinkState.Online && btWithoutBattery[0].Percent is null, "Connected Bluetooth devices remain visible without fabricating battery levels");
+Check(!JsonSerializer.Serialize(btOnline).Contains("AABBCCDDEEFF", StringComparison.OrdinalIgnoreCase), "Bluetooth addresses stay out of serialized diagnostics");
+Check(OfflinePoetry.Entries.Count == 30 && OfflinePoetry.Entries.Select(p => p.Content).Distinct().Count() == 30, "Thirty distinct public-domain quotes are included");
+Check(OfflinePoetry.Entries.All(p => p.Dynasty.Length > 0 && p.Author.Length > 0 && p.Origin.Length > 0 && p.Source == "内置公版诗库"), "Offline entries carry complete, distinct provenance");
+var offlineOne = OfflinePoetry.Pick(now); var offlineTwo = OfflinePoetry.Pick(now.AddDays(1));
+Check(offlineOne.Content != offlineTwo.Content, "Offline daily rotation advances");
+Check(OfflinePoetry.Pick(now, offlineOne.Content, true).Content != offlineOne.Content, "Manual offline refresh avoids the previous quote");
+Check((offlineOne with { Dynasty = "唐代" }).DynastyMark == "唐", "Dynasty credit uses one character");
+var fallbackDay = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).Date;
+var fallbackJson = JsonSerializer.Serialize(new {
+    current_condition = new[] { new { temp_C = "18", weatherCode = "116", windspeedKmph = "8", humidity = "60" } },
+    weather = Enumerable.Range(0, 3).Select(i => new {
+        date = fallbackDay.AddDays(i).ToString("yyyy-MM-dd"), maxtempC = "21", mintempC = "12",
+        astronomy = new[] { new { sunrise = "06:00 AM", sunset = "06:00 PM" } },
+        hourly = Enumerable.Range(0, 8).Select(h => new { time = (h * 300).ToString(), tempC = "18", weatherCode = "116" }).ToArray()
+    }).ToArray()
+});
+var backupHandler = new WeatherSequenceHandler(fallbackJson);
+using(var backupService = new WeatherService(backupHandler)) {
+    var backup = await backupService.FetchAsync(new Place("绍兴", "中国", null, 30, 120), CancellationToken.None);
+    Check(backup.Source.StartsWith("wttr.in") && backup.HourResolution == 3 && backup.Hours.Length > 0 && backup.Days.Length == 2, "Primary failure returns real backup fields without inventing seven days");
+    Check(backupHandler.Hosts.SequenceEqual(new[] { "api.open-meteo.com", "wttr.in" }), "Weather failover crosses independent hosts");
+}
+var disabledHandler = new WeatherSequenceHandler(fallbackJson);
+using(var disabledBackup = new WeatherService(disabledHandler)) {
+    bool backupRejected = false;
+    try { await disabledBackup.FetchAsync(new Place("绍兴", "中国", null, 30, 120), CancellationToken.None, false); } catch(HttpRequestException) { backupRejected = true; }
+    Check(backupRejected && disabledHandler.Hosts.Count == 1, "Disabling backup prevents its network request");
+}
+Check(WttrWeather.ToWmo(113) == 0 && WttrWeather.ToWmo(143) == 45 && WttrWeather.ToWmo(149) == 45 && WttrWeather.ToWmo(389) == 95, "Backup weather codes normalize to existing icons");
+Check(WttrWeather.ToWmo(9999) == -1, "Unknown backup conditions stay unknown instead of turning into sunshine");
 Console.WriteLine($"PASS {count} checks. No external notification was sent.");
+return 0;
+} catch(Exception error) { Console.Error.WriteLine(error); return 1; }
 
 sealed class FakeHandler(string response) : HttpMessageHandler
 {
     public string? Uri; public string? Body;
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     { Uri = request.RequestUri!.ToString(); Body = await request.Content!.ReadAsStringAsync(token); return new(HttpStatusCode.OK) { Content = new StringContent(response, Encoding.UTF8, "application/json") }; }
+}
+
+sealed class WeatherSequenceHandler(string fallback) : HttpMessageHandler
+{
+    public List<string> Hosts { get; } = [];
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) {
+        token.ThrowIfCancellationRequested(); Hosts.Add(request.RequestUri!.Host);
+        return Task.FromResult(request.RequestUri.Host == "wttr.in" ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(fallback) } : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+    }
 }

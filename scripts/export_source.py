@@ -18,7 +18,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
             continue
         if rel.parts[0] not in directories and str(rel) not in files:
             continue
-        if path.suffix.lower() in {".log", ".user", ".pyc"} or path.name.lower() in {"settings.json", ".env", "diagnostics.json", "battery.json"}:
+        if path.suffix.lower() in {".log", ".user", ".pyc"} or path.name.lower() in {"settings.json", ".env", "diagnostics.json", "battery.json", "poetry-token.dat", "poetry-token.dat.tmp", "poetry-cache.json", "weather-cache.json", "poetry-cache.json.local", "poetry-cache.json.local.tmp"}:
             continue
         archive.write(path, Path("Mizu") / rel)
 with zipfile.ZipFile(out) as archive:

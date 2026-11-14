@@ -12,29 +12,41 @@ public static class DeviceIdentity
     public static string Physical(HidEndpoint e) => string.IsNullOrWhiteSpace(e.ContainerId) || e.ContainerId == Guid.Empty.ToString() ? e.InstanceId : e.ContainerId;
 }
 
-public sealed class WindowsBatteryProvider(IReadOnlyList<PnpNode> nodes, IReadOnlyList<HidEndpoint> hid) : IBatteryProvider
+public sealed class WindowsBatteryProvider(IReadOnlyList<PnpNode> nodes, IReadOnlyList<HidEndpoint> hid, IReadOnlyList<BluetoothLink>? links = null) : IBatteryProvider
 {
     public string Name => "Windows battery property";
     public Task<IReadOnlyList<Peripheral>> ScanAsync(CancellationToken token)
     {
         var results = new List<Peripheral>();
-        foreach (var n in nodes.Where(x => x.Battery is not null))
+        var live = links ?? [];
+        var families = nodes.Where(x => !string.IsNullOrWhiteSpace(x.ContainerId) && x.ContainerId != Guid.Empty.ToString()).GroupBy(x => x.ContainerId).ToDictionary(g => g.Key, g => g.ToArray());
+        foreach (var n in nodes)
         {
             token.ThrowIfCancellationRequested();
-            var family = nodes.Where(x => x.ContainerId == n.ContainerId && !string.IsNullOrEmpty(n.ContainerId)).ToArray();
-            var bt = n.InstanceId.StartsWith("BTH", StringComparison.OrdinalIgnoreCase) || family.Any(x => x.InstanceId.StartsWith("BTH", StringComparison.OrdinalIgnoreCase));
+            var family = families.GetValueOrDefault(n.ContainerId) ?? [];
+            bool bt = n.InstanceId.StartsWith("BTH", StringComparison.OrdinalIgnoreCase) || family.Any(x => x.InstanceId.StartsWith("BTH", StringComparison.OrdinalIgnoreCase));
+            if (n.Battery is null && !bt) continue;
+            var radio = live.FirstOrDefault(link => link.Matches(n) || family.Any(link.Matches));
+            if (n.Battery is null && !(bt && radio?.Connected == true)) continue;
             var kinds = family.Select(x => DeviceClassifier.FromMetadata(x.Class)).Where(x => x != PeripheralKind.Unknown).Distinct().ToArray();
-            var hidKinds = hid.Where(x => x.ContainerId == n.ContainerId).Select(x => DeviceClassifier.FromHid(x.UsagePage, x.Usage)).Where(x => x != PeripheralKind.Unknown).Distinct().ToArray();
-            var kind = hidKinds.Length == 1 ? hidKinds[0] : kinds.Length == 1 ? kinds[0] : DeviceClassifier.FromMetadata(n.Name);
-            // Do not label headphones/phones as keyboard or mouse by a model-name substring.
-            if (kind == PeripheralKind.Unknown && !(n.Class.Equals("Keyboard", StringComparison.OrdinalIgnoreCase) || n.Class.Equals("Mouse", StringComparison.OrdinalIgnoreCase))) continue;
-            var connected = n.Connected ?? family.Select(x => x.Connected).FirstOrDefault(x => x.HasValue);
+            var hidKinds = hid.Where(x => !string.IsNullOrWhiteSpace(n.ContainerId) && x.ContainerId == n.ContainerId).Select(x => DeviceClassifier.FromHid(x.UsagePage, x.Usage)).Where(x => x != PeripheralKind.Unknown).Distinct().ToArray();
+            var kind = hidKinds.Length == 1 ? hidKinds[0] : kinds.Length == 1 ? kinds[0] : DeviceClassifier.FromMetadata(n.Class);
+            if (kind == PeripheralKind.Unknown && radio is { Kind: not PeripheralKind.Unknown }) kind = radio.Kind;
+            if (kind == PeripheralKind.Unknown) continue;
+            var connected = bt && radio?.Connected is { } connectedRadio ? connectedRadio : n.Connected ?? family.Select(x => x.Connected).FirstOrDefault(x => x.HasValue);
             var state = connected == true ? LinkState.Online : connected == false ? LinkState.Offline : LinkState.Unknown;
             var id = "win:" + DeviceIdentity.Hash(string.IsNullOrEmpty(n.ContainerId) ? n.InstanceId : n.ContainerId);
-            results.Add(new(id, n.Name, kind, bt ? LinkKind.Bluetooth : LinkKind.Unknown, state, n.Battery, null, Name,
-                connected == true ? DateTimeOffset.UtcNow : null, n.ContainerId, "Windows 缓存电量；刷新速度由设备与系统决定"));
+            var percent = n.Battery ?? family.Select(x => x.Battery).FirstOrDefault(b => b.HasValue);
+            var name = bt && !string.IsNullOrWhiteSpace(radio?.Name) ? radio.Name : n.Name;
+            results.Add(new Peripheral(id, name, kind, bt ? LinkKind.Bluetooth : LinkKind.Unknown, state, percent, null, Name,
+                connected == true && percent is not null ? DateTimeOffset.UtcNow : null, n.ContainerId,
+                percent is not null ? "Windows 缓存电量；连接状态优先使用蓝牙实时事件" : "蓝牙已连接，但 Windows 尚未提供电量") { BluetoothAddress = radio?.Address });
         }
-        return Task.FromResult<IReadOnlyList<Peripheral>>(results.GroupBy(x => x.Id).Select(x => x.OrderByDescending(y => y.State == LinkState.Online).First()).ToArray());
+        // A paired HID may be connected before its PnP battery node appears.
+        foreach (var radio in live.Where(l => l.Connected == true && l.Kind != PeripheralKind.Unknown))
+            if (!results.Any(r => radio.Matches(r))) results.Add(new Peripheral("bt:" + DeviceIdentity.Hash(radio.Id), radio.Name, radio.Kind, LinkKind.Bluetooth,
+                LinkState.Online, null, null, Name, null, radio.ContainerId, "蓝牙已连接；等待系统电量") { BluetoothAddress = radio.Address });
+        return Task.FromResult<IReadOnlyList<Peripheral>>(results.GroupBy(x => x.Id).Select(x => x.OrderByDescending(y => y.State == LinkState.Online).ThenByDescending(y => y.Percent.HasValue).First()).ToArray());
     }
 }
 

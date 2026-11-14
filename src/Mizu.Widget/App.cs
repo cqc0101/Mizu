@@ -54,7 +54,7 @@ public sealed class App : Application
     private int Smoke(string directory)
     {
         directory = Path.GetFullPath(directory); Directory.CreateDirectory(directory);
-        var window = new MainWindow(new AppSettings(), persistSettings: false); MainWindow = window;
+        var window = new MainWindow(new AppSettings { ShowNetwork = true, ShowMedia = true, ShowPoetry = true, Location = new SettingsStore().Load().Location }, persistSettings: false); MainWindow = window;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
         timer.Tick += async (_, _) =>
         {
@@ -73,7 +73,7 @@ public sealed class App : Application
                 }
                 settings.Close();
                 File.WriteAllText(Path.Combine(directory, "smoke.json"), JsonSerializer.Serialize(new
-                { window.State.System, window.State.Devices, window.State.Scanning, Width = window.ActualWidth, Height = window.ActualHeight }, new JsonSerializerOptions { WriteIndented = true }));
+                { window.State.System, window.State.Devices, Bluetooth = window.Engine.BluetoothSummary, window.State.Network, window.State.Media, window.State.Weather, window.State.WeatherCached, window.State.WeatherFailed, window.State.Poetry, window.State.PoetryFailed, window.State.Scanning, Width = window.ActualWidth, Height = window.ActualHeight }, new JsonSerializerOptions { WriteIndented = true }));
                 await window.QuitAsync();
             }
             catch (Exception ex) { File.WriteAllText(Path.Combine(directory, "smoke-error.txt"), ex.ToString()); await window.QuitAsync(); }

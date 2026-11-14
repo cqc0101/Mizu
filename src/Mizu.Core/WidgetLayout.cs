@@ -2,7 +2,7 @@ using Mizu.Core.Services;
 
 namespace Mizu.Core;
 
-public enum WidgetSection { Weather, Devices, Metrics, Todo }
+public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, Todo }
 public sealed record SectionLayout(WidgetSection Kind, double Top, double Height);
 public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
 {
@@ -19,10 +19,13 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         }
         if (s.ShowDevices) Add(WidgetSection.Devices, s.CompactMode ? 112 : 156);
         if (s.ShowCpu || s.ShowMemory || s.ShowTemperature) Add(WidgetSection.Metrics, s.CompactMode || !s.ShowGraphs ? 52 : 84);
+        if (s.ShowNetwork) Add(WidgetSection.Network, 44 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 44 : 28));
+        if (s.ShowMedia) Add(WidgetSection.Media, 104);
+        if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);
         if (s.ShowTodo)
         {
             var count = s.Todos.Count(t => !s.HideCompletedTodos || !t.Completed);
-            Add(WidgetSection.Todo, Math.Max(1, Math.Min(count, s.TodoVisibleRows)) * 32 + 40);
+            if (count > 0) Add(WidgetSection.Todo, Math.Min(count, s.TodoVisibleRows) * 32);
         }
         return new(rows.ToArray(), Math.Max(104, y + 20));
     }

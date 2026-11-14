@@ -9,14 +9,14 @@ public static class Art
     public static SolidColorBrush Brush(string value) => new((Color)ColorConverter.ConvertFromString(value));
     public static Pen Pen(Brush brush, double width = 1.3) => new(brush, width) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
     public static void Line(DrawingContext d, Pen p, double x, double y, double x2, double y2) => d.DrawLine(p, new(x, y), new(x2, y2));
-    public static void Text(DrawingContext d, string value, double x, double y, double size, Brush brush, double pixelsPerDip = 1, bool medium = false, double? width = null, int? weight = null, bool fit = false)
+    public static void Text(DrawingContext d, string value, double x, double y, double size, Brush brush, double pixelsPerDip = 1, bool medium = false, double? width = null, int? weight = null, bool fit = false, TextAlignment alignment = TextAlignment.Left)
     {
         var text = new FormattedText(value, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
             new Typeface(new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI"), FontStyles.Normal, weight is { } wgt ? FontWeight.FromOpenTypeWeight(wgt) : medium ? FontWeights.Medium : FontWeights.Normal, FontStretches.Normal), size, brush, pixelsPerDip);
         if (width is { } w)
         {
             if (fit && text.WidthIncludingTrailingWhitespace > w) text.SetFontSize(size * w / text.WidthIncludingTrailingWhitespace);
-            text.MaxTextWidth = w; text.MaxLineCount = 1; text.Trimming = TextTrimming.CharacterEllipsis;
+            text.MaxTextWidth = w; text.TextAlignment = alignment; text.MaxLineCount = 1; text.Trimming = TextTrimming.CharacterEllipsis;
         }
         d.DrawText(text, new(x, y));
     }
@@ -27,6 +27,11 @@ public static class Art
         void L(double a, double b, double c, double e) => Line(d, p, a, b, c, e);
         switch (kind)
         {
+            case "music": d.DrawGeometry(null, p, Geometry.Parse("M 10,17 L 10,4 20,2 20,15 M 10,8 L 20,6")); d.DrawEllipse(null, p, new(6,18), 4, 3); d.DrawEllipse(null, p, new(16,16), 4, 3); break;
+            case "previous": L(5,5,5,19); d.DrawGeometry(brush, null, Geometry.Parse("M 18,5 L 7,12 18,19 Z")); break;
+            case "next": L(19,5,19,19); d.DrawGeometry(brush, null, Geometry.Parse("M 6,5 L 17,12 6,19 Z")); break;
+            case "play": d.DrawGeometry(brush, null, Geometry.Parse("M 7,4 L 20,12 7,20 Z")); break;
+            case "pause": L(8,5,8,19); L(16,5,16,19); break;
             case "plus": L(12, 5, 12, 19); L(5, 12, 19, 12); break;
             case "settings":
                 d.DrawEllipse(null, p, new(12, 12), 4, 4);
@@ -77,6 +82,7 @@ public static class Art
     }
     public static void Weather(DrawingContext d, int code, bool day, double x, double y, double size, Brush foreground, bool dark)
     {
+        if (code < 0) { Icon(d, "unknown", x + size * .25, y + size * .2, size * .5, foreground); return; }
         d.PushTransform(new TranslateTransform(x, y)); d.PushTransform(new ScaleTransform(size / 80, size / 80));
         var gold = Brush(dark ? "#D9C391" : "#B9A16E"); var p = Pen(gold, 1.65);
         if (code <= 2 && day)

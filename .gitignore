@@ -17,3 +17,14 @@ battery.json
 smoke-output/
 work/
 outputs/
+
+weather-cache.json
+weather-cache.json.tmp
+
+poetry-cache.json
+poetry-cache.json.tmp
+poetry-token.dat
+poetry-token.dat.tmp
+
+poetry-cache.json.local
+poetry-cache.json.local.tmp
