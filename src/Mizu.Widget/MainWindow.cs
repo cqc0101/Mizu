@@ -139,7 +139,11 @@ public sealed class MainWindow : Window
         int generation = ++footerGeneration;
         void Finish() {
             if (generation != footerGeneration) return;
-            footerAnimating = false; BeginAnimation(TodoRevealProperty, null); TodoReveal = target; UpdateTodoGeometry();
+            // Set the underlying value before removing the animation clock.
+            // Otherwise WPF exposes the old base value for one change callback,
+            // briefly shrinking the native window before expanding it again.
+            TodoReveal = target; BeginAnimation(TodoRevealProperty, null);
+            footerAnimating = false; UpdateTodoGeometry();
         }
         if (!animate || !IsLoaded || !Settings.SmoothResize) { Finish(); return; }
         footerAnimating = true;

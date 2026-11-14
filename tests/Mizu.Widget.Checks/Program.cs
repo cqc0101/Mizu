@@ -57,7 +57,7 @@ var add=Desc<Button>(grid).Single(b=>b.ToolTip is ToolTip hint && Equals(hint.Co
 main.UpdateLayout(); Check(settingsLive.Todos.Count==3 && settingsLive.Todos[2].Text=="New inline task","Inline add persists a new task");
 settingsLive.ShowWeather=settingsLive.ShowDevices=settingsLive.ShowMemory=settingsLive.ShowTemperature=false;settingsLive.ShowTodo=false;main.ApplySettings();main.UpdateLayout();
 Check(grid.ActualHeight==WidgetLayout.Calculate(settingsLive).Height && Desc<TextBox>(grid).Count()==0,"Disabling modules reflows window and removes todo editor");
-var dialog=new SettingsWindow(main);dialog.Show();dialog.UpdateLayout();var tabs=Desc<TabControl>(dialog).Single();Check(tabs.Items.Count==7,"Seven settings pages");
+var dialog=new SettingsWindow(main);dialog.Show();dialog.UpdateLayout();var tabs=Desc<TabControl>(dialog).Single();Check(tabs.Items.Count==8,"Eight settings pages including About");
 tabs.SelectedIndex=0;dialog.UpdateLayout();
 var sliders=Desc<Slider>(dialog).ToArray(); sliders[0].Value=35;dialog.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);Check(Math.Abs(settingsLive.GlassOpacity-.35)<.001,"Opacity control applies immediately");
 sliders[1].Value=64;dialog.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);Check(settingsLive.CornerRadius==64 && ((RectangleGeometry)grid.Clip).RadiusX==64,"Radius control updates visual and content clipping together");
@@ -141,9 +141,9 @@ Check(mediaButtons.Single(b => System.Windows.Automation.AutomationProperties.Ge
 Check(main.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Network) && main.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Media), "Both new modules reflow into widget");
 main.Settings.NetworkProbeTargets = ["192.0.2.1", "2001:db8::1"]; main.Settings.ShowNetworkProbeIp = true;
 main.State.Network = main.State.Network! with { Targets = [new("192.0.2.1",0,12,30),new("2001:db8::1",10,25,30)] };main.ApplySettings();main.UpdateLayout();
-Check(main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==132 && main.Surface.NetworkHint.Contains("192.0.2.1"),"Multiple network probe rows reserve their IP headings");
+Check(main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==164 && main.Surface.NetworkHint.Contains("192.0.2.1"),"Multiple network probe rows reserve title, labels and IP headings");
 main.Settings.ShowNetworkProbeIp=false;main.ApplySettings();main.UpdateLayout();
-Check(main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==100 && !main.Surface.NetworkHint.Contains("192.0.2.1") && !main.Surface.NetworkHint.Contains("2001:db8::1"),"Hiding probe IPs redacts both display headings and hover details");
+Check(main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==124 && !main.Surface.NetworkHint.Contains("192.0.2.1") && !main.Surface.NetworkHint.Contains("2001:db8::1"),"Hiding probe IPs redacts both display headings and hover details");
 tabs.SelectedIndex=1;typeof(SettingsWindow).GetMethod("BuildProbeList",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[]);dialog.UpdateLayout();
 var probeInput=Desc<TextBox>(dialog).Single(t=>string.IsNullOrEmpty(t.Text));probeInput.Text="203.0.113.8";
 Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加 IP")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));dialog.UpdateLayout();
@@ -157,9 +157,15 @@ Check(!main.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Todo), "Emp
 var footer = (FrameworkElement)typeof(MainWindow).GetField("todoEditorHost",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(main)!;
 Check(footer.Opacity == 0 && !footer.IsHitTestVisible, "Footer starts hidden with no invisible hit targets");
 var baseFooterHeight = WidgetLayout.Calculate(main.Settings).Height;
+var revealSamples = new List<double> { main.TodoReveal };
+var revealDescriptor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(MainWindow.TodoRevealProperty, typeof(MainWindow));
+EventHandler observeReveal = (_, _) => revealSamples.Add(main.TodoReveal);
+revealDescriptor.AddValueChanged(main, observeReveal);
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]); Pump(45);
 Check(main.TodoReveal > 0 && main.TodoReveal < 1, "Hover has intermediate expansion frames");
 Pump(320); main.UpdateLayout();
+revealDescriptor.RemoveValueChanged(main, observeReveal);
+Check(revealSamples.Count > 2 && revealSamples.Zip(revealSamples.Skip(1), (a,b) => b >= a - .00001).All(x=>x), "Footer expansion never flashes back to its base value at animation completion");
 Check(footer.IsHitTestVisible && Math.Abs(main.VisualContent.ActualHeight - baseFooterHeight - 44) < .1, "Hover expands exactly one editor row");
 var emptyInput = Desc<TextBox>(footer).Single();
 main.Activate(); emptyInput.Focus(); Pump(40);

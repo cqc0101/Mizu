@@ -69,7 +69,7 @@ public sealed class SettingsWindow : Window
         heading.Children.Add(new TextBlock { Text = "Mizu", FontSize = 28, FontWeight = FontWeights.Light });
         heading.Children.Add(new TextBlock { Text = "偏好设置", Margin = new(1, 5, 0, 0), Foreground = theme.Brush("#8D9487"), FontSize = 12 }); root.Children.Add(heading);
         var tabs = new TabControl { Background = Brushes.Transparent, BorderThickness = new(0), TabStripPlacement = Dock.Left };
-        AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push());
+        AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push()); AddTab(tabs, "关于", About());
         Grid.SetRow(tabs, 1); root.Children.Add(tabs); Grid.SetRow(status, 2); root.Children.Add(status); Content = root;
         saveDelay.Tick += (_, _) => FlushPendingSave();
         Closed += (_, _) => { FlushPendingSave(); lifetime.Cancel(); lifetime.Dispose(); };
@@ -392,6 +392,40 @@ public sealed class SettingsWindow : Window
             row.Children.Add(Toggle("隐藏", settings.HiddenDevices.Contains(device.Id), v => { if (v) settings.HiddenDevices.Add(device.Id); else settings.HiddenDevices.Remove(device.Id); Save(); })); panel.Children.Add(row);
             panel.Children.Add(Label(device.Source, true)); deviceList.Children.Add(panel);
         }
+    }
+    private UIElement About()
+    {
+        const string email = "cehngshaozhe1@gmail.com";
+        const string project = "https://github.com/cqc0101/Mizu";
+        var panel = new StackPanel { Margin = new(1, 16, 12, 0) };
+        panel.Children.Add(new TextBlock { Text = "Mizu", FontSize = 36, FontWeight = FontWeights.Light, Margin = new(0, 0, 0, 8) });
+        var version = typeof(App).Assembly.GetName().Version;
+        panel.Children.Add(Label($"v{version?.ToString(3) ?? "—"} · 预览版 · {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}", true));
+        panel.Children.Add(Label("天气、键鼠电量与系统状态，安静地放在桌面一角。", true));
+        panel.Children.Add(new Separator { Margin = new(0, 22, 0, 16) });
+        void Open(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch (Exception ex) { status.Text = "无法打开链接，请检查默认浏览器或邮件应用"; AppLog.Write("about.link", ex.GetType().Name); }
+        }
+        panel.Children.Add(ActionButton("GitHub 项目", (_, _) => Open(project)));
+        panel.Children.Add(ActionButton("反馈问题与设备适配", (_, _) => Open(project + "/issues/new/choose")));
+        panel.Children.Add(Label("联系", true));
+        var contact = new StackPanel { Orientation = Orientation.Horizontal };
+        contact.Children.Add(ActionButton(email, (_, _) => Open("mailto:" + email)));
+        contact.Children.Add(ActionButton("复制邮箱", (_, _) => {
+            try { Clipboard.SetText(email); status.Text = "邮箱已复制"; }
+            catch (System.Runtime.InteropServices.ExternalException) { status.Text = "剪贴板暂时不可用，请稍后重试"; }
+        }));
+        panel.Children.Add(contact);
+        panel.Children.Add(new Separator { Margin = new(0, 22, 0, 16) });
+        panel.Children.Add(Label("开放源码 · MIT License"));
+        panel.Children.Add(Label("Mizu 自有源码采用 MIT 许可，第三方组件与数据遵循各自许可。", true));
+        var licenses = new StackPanel { Orientation = Orientation.Horizontal };
+        licenses.Children.Add(ActionButton("开源许可", (_, _) => Open(project + "/blob/main/LICENSE")));
+        licenses.Children.Add(ActionButton("第三方声明", (_, _) => Open(project + "/blob/main/THIRD-PARTY-NOTICES.md")));
+        panel.Children.Add(licenses);
+        return panel;
     }
     private UIElement Push()
     {

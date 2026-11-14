@@ -98,18 +98,20 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     private void DrawNetwork(DrawingContext d, double y)
     {
         var n = state.Network;
-        d.DrawEllipse(n?.Connected == true ? green : quiet, null, new(37, y + 14), 4, 4);
-        Text(d, "↓ " + Speed(n?.Download), 52, y + 4, 14, foreground, Dpi, width: 132);
-        Text(d, "↑ " + Speed(n?.Upload), 195, y + 4, 14, foreground, Dpi, width: 132);
+        Text(d, "网络", 31, y, 12, secondary, Dpi, medium: true);
+        d.DrawEllipse(n?.Connected == true ? green : quiet, null, new(320, y + 9), 3, 3);
+        Text(d, "↓ " + Speed(n?.Download), 31, y + 24, 13, foreground, Dpi, width: 146);
+        Text(d, "↑ " + Speed(n?.Upload), 195, y + 24, 13, foreground, Dpi, width: 132);
         var targets = settings.NetworkProbeTargets?.ToArray() ?? new[] { settings.NetworkProbeTarget };
         for (int i = 0; i < targets.Length; i++) {
-            var row = y + 38 + i * (settings.ShowNetworkProbeIp ? 44 : 28);
+            var row = y + 56 + i * (settings.ShowNetworkProbeIp ? 52 : 32);
             var probe = n?.Targets.FirstOrDefault(p => p.Target == targets[i]);
             if (probe is null && n?.Target == targets[i] && n.Targets.Length == 0) probe = new(n.Target,n.Loss,n.Latency,n.Probes);
-            if (settings.ShowNetworkProbeIp) { Text(d, targets[i], 31, row, 10, quiet, Dpi, width: 294); row += 15; }
-            d.DrawEllipse(probe?.Latency is not null ? green : quiet, null, new(37,row+9), 2.5, 2.5);
-            Text(d, probe?.Latency is { } ms ? $"{ms} ms" : "— ms", 52, row, 12, secondary, Dpi, width: 135);
-            Text(d, probe?.Loss is { } loss ? $"{loss:0.#}%" : "—%", 238, row, 12, secondary, Dpi, width: 85);
+            if (settings.ShowNetworkProbeIp) { Text(d, targets[i], 31, row, 10, quiet, Dpi, width: 294); row += 17; }
+            Text(d, "延迟", 31, row + 3, 10, secondary, Dpi, width: 30);
+            Text(d, probe?.Latency is { } ms ? $"{ms} ms" : "— ms", 67, row, 14, foreground, Dpi, width: 112);
+            Text(d, "丢包", 195, row + 3, 10, secondary, Dpi, width: 30);
+            Text(d, probe?.Loss is { } loss ? $"{loss:0.#}%" : "—%", 231, row, 14, foreground, Dpi, width: 96);
         }
     }
     private static string Speed(double? value) => value is not { } v ? "—" : v >= 1048576 ? $"{v / 1048576:0.0} MiB/s" : $"{v / 1024:0.0} KiB/s";

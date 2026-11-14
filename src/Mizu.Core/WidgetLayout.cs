@@ -19,7 +19,7 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         }
         if (s.ShowDevices) Add(WidgetSection.Devices, s.CompactMode ? 112 : 156);
         if (s.ShowCpu || s.ShowMemory || s.ShowTemperature) Add(WidgetSection.Metrics, s.CompactMode || !s.ShowGraphs ? 52 : 84);
-        if (s.ShowNetwork) Add(WidgetSection.Network, 44 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 44 : 28));
+        if (s.ShowNetwork) Add(WidgetSection.Network, 60 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 52 : 32));
         if (s.ShowMedia) Add(WidgetSection.Media, 104);
         if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);
         if (s.ShowTodo)
