@@ -63,7 +63,7 @@ pwsh .\scripts\publish.ps1 -Runtime win-x64
 
 输出：`artifacts/Mizu-0.5.0-win-x64/`。其他可选目标：`win-x86`、`win-arm64`。
 首次还原和跨架构发布需要访问 NuGet。WPF 检查需要交互式 Windows 桌面。
-[架构与扩展](docs/architecture.md) · [参与贡献](CONTRIBUTING.md) · [版本记录](CHANGELOG.md)
+[ARM64 云端验证](docs/arm64-validation.md) · [架构与扩展](docs/architecture.md) · [参与贡献](CONTRIBUTING.md) · [版本记录](CHANGELOG.md)
 
 ## 数据与许可
 

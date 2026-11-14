@@ -1,0 +1,101 @@
+name: Windows ARM64 validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to validate
+        required: true
+        default: v0.5.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate-arm64-package:
+    name: Check the ARM64 portable package
+    runs-on: windows-11-arm
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - name: Download release package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Invalid release tag: $env:RELEASE_TAG"
+          }
+          $asset = "Mizu-$($env:RELEASE_TAG.TrimStart('v'))-win-arm64.zip"
+          $url = "https://github.com/${{ github.repository }}/releases/download/$($env:RELEASE_TAG)/$asset"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\$asset"
+          Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/$($env:RELEASE_TAG)/SHA256SUMS.txt" -OutFile "$env:RUNNER_TEMP\SHA256SUMS.txt"
+          Expand-Archive -LiteralPath "$env:RUNNER_TEMP\$asset" -DestinationPath "$env:RUNNER_TEMP\package" -Force
+
+      - name: Verify release checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $asset = "Mizu-$($env:RELEASE_TAG.TrimStart('v'))-win-arm64.zip"
+          $line = Get-Content "$env:RUNNER_TEMP\SHA256SUMS.txt" | Where-Object { $_.EndsWith("  $asset") } | Select-Object -First 1
+          if (-not $line) { throw "No SHA256 entry for $asset" }
+          $expected = ($line -split '\s+')[0].ToLowerInvariant()
+          $actual = (Get-FileHash "$env:RUNNER_TEMP\$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Release checksum mismatch for $asset" }
+          "SHA256 verified: $actual" | Tee-Object -FilePath "$env:RUNNER_TEMP\arm64-validation.txt"
+
+      - name: Confirm native ARM64 executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Join-Path $env:RUNNER_TEMP 'package\Mizu-win-arm64\app\Mizu.exe'
+          if (-not (Test-Path -LiteralPath $app)) { throw "ARM64 apphost not found: $app" }
+          $stream = [System.IO.File]::OpenRead($app)
+          try {
+            $reader = [System.IO.BinaryReader]::new($stream)
+            $stream.Position = 0x3C
+            $peOffset = $reader.ReadInt32()
+            $stream.Position = $peOffset + 4
+            $machine = $reader.ReadUInt16()
+          } finally { $stream.Dispose() }
+          if ($machine -ne 0xAA64) { throw ('Expected ARM64 PE 0xAA64; found 0x{0:X4}' -f $machine) }
+          "Machine: 0x{0:X4} (ARM64)" -f $machine | Tee-Object -FilePath "$env:RUNNER_TEMP\arm64-validation.txt"
+          "Package size: {0:N1} MiB" -f ((Get-Item "$env:RUNNER_TEMP\Mizu-$($env:RELEASE_TAG.TrimStart('v'))-win-arm64.zip").Length / 1MB) | Add-Content "$env:RUNNER_TEMP\arm64-validation.txt"
+
+      - name: Launch the widget smoke check
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Join-Path $env:RUNNER_TEMP 'package\Mizu-win-arm64\app\Mizu.exe'
+          $result = Join-Path $env:RUNNER_TEMP 'smoke'
+          $process = Start-Process -FilePath $app -ArgumentList @('--smoke', ('"' + $result + '"')) -PassThru
+          if (-not $process.WaitForExit(90000)) {
+            $process.Kill()
+            throw 'Widget smoke check exceeded 90 seconds'
+          }
+          if ($process.ExitCode -ne 0) { throw "Widget exited with code $($process.ExitCode)" }
+          if (Test-Path "$result\smoke-error.txt") { Get-Content "$result\smoke-error.txt"; throw 'Widget smoke check reported an error' }
+          $reportPath = "$result\smoke.json"
+          if (-not (Test-Path $reportPath)) { throw 'Widget did not write its smoke report' }
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+          if ($architecture -ne [System.Runtime.InteropServices.Architecture]::Arm64) {
+            throw "Widget ran as $architecture instead of ARM64"
+          }
+          $summary = "Smoke check passed in an ARM64 process on $([System.Runtime.InteropServices.RuntimeInformation]::OSDescription); widget rendered {0}x{1}." -f $report.Width,$report.Height
+          $summary | Tee-Object -FilePath "$env:RUNNER_TEMP\smoke-summary.txt"
+          $summary | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Preserve validation summary and widget render
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm64-validation-${{ inputs.release_tag }}
+          path: |
+            ${{ runner.temp }}/arm64-validation.txt
+            ${{ runner.temp }}/smoke-summary.txt
+            ${{ runner.temp }}/smoke/live-widget.png
+          if-no-files-found: ignore
+          retention-days: 14
