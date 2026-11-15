@@ -24,7 +24,7 @@
 
 ## 开始使用
 
-当前版本 **0.5.0 预览版**。[下载安装版或便携版](https://github.com/cqc0101/Mizu/releases/tag/v0.5.0)。
+当前版本 **0.5.1 预览版**。[下载安装版或便携版](https://github.com/cqc0101/Mizu/releases/tag/v0.5.1)。
 安装版运行对应的 `-setup.exe`；便携版完整解压，双击根目录 `Mizu.exe`。[安装与卸载说明](docs/installation.md)
 常见 Intel / AMD 电脑使用 `win-x64`；32 位 Windows 使用 `win-x86`；ARM 使用 `win-arm64`。
 首次使用在设置中选择城市并调整显示内容。双击组件或按 `Ctrl+,` 打开设置；托盘菜单可退出。
@@ -61,7 +61,7 @@ dotnet run --project .\tests\Mizu.Widget.Checks\Mizu.Widget.Checks.csproj -c Rel
 pwsh .\scripts\publish.ps1 -Runtime win-x64
 ```
 
-输出：`artifacts/Mizu-0.5.0-win-x64/`。其他可选目标：`win-x86`、`win-arm64`。
+输出：`artifacts/Mizu-0.5.2-win-x64/`。其他可选目标：`win-x86`、`win-arm64`。
 首次还原和跨架构发布需要访问 NuGet。WPF 检查需要交互式 Windows 桌面。
 [ARM64 云端验证](docs/arm64-validation.md) · [架构与扩展](docs/architecture.md) · [参与贡献](CONTRIBUTING.md) · [版本记录](CHANGELOG.md)
 

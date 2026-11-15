@@ -42,6 +42,7 @@ public sealed class MainWindow : Window
     private HashSet<string> onlineDevices = [];
     private bool disposed;
     private readonly bool persistSettings;
+    private bool repositionQueued;
     public MainWindow(AppSettings settings, WidgetState? state = null, bool preview = false, bool persistSettings = true)
     {
         this.persistSettings = persistSettings;
@@ -194,9 +195,10 @@ public sealed class MainWindow : Window
     }
     private IntPtr WindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == 0x007e) QueueEnsureReachablePosition(); // WM_DISPLAYCHANGE
         if (msg == 0x0312 && wParam.ToInt32() == 0x4d5a)
-        { Settings.ClickThrough = false; Show(); ApplySettings(); SaveSettings(); Activate(); handled = true; }
-        if (msg == 0x8001) { Show(); Activate(); handled = true; }
+        { EnsureReachablePosition(); Settings.ClickThrough = false; Show(); ApplySettings(); SaveSettings(); Activate(); handled = true; }
+        if (msg == 0x8001) { EnsureReachablePosition(); Show(); Activate(); handled = true; }
         if (msg == 0x0219 || msg == 0x0218 && wParam.ToInt32() == 0x12) Engine.RequestConnectionRefresh();
         return IntPtr.Zero;
     }
@@ -204,10 +206,32 @@ public sealed class MainWindow : Window
     {
         var work = SystemParameters.WorkArea;
         Left = Settings.Left ?? work.Right - Width - 40; Top = Settings.Top ?? work.Top + 50;
-        var dpi = VisualTreeHelper.GetDpi(this);
-        var rectangle = new System.Drawing.Rectangle((int)(Left * dpi.DpiScaleX), (int)(Top * dpi.DpiScaleY), (int)(Width * dpi.DpiScaleX), (int)(Height * dpi.DpiScaleY));
-        if (!System.Windows.Forms.Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(rectangle))) { Left = work.Right - Width - 30; Top = work.Top + 30; }
+        EnsureReachablePosition();
     }
+    private void QueueEnsureReachablePosition()
+    {
+        if (repositionQueued || disposed) return;
+        repositionQueued = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+        { repositionQueued = false; EnsureReachablePosition(); }));
+    }
+    private void EnsureReachablePosition()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !NativeWindow.GetWindowRect(hwnd, out var bounds)) return;
+        if (HasReachableWorkArea(bounds, System.Windows.Forms.Screen.AllScreens.Select(screen => screen.WorkingArea))) return;
+        // WPF coordinates are DPI-scaled; place the native HWND in physical
+        // primary-monitor coordinates so detached displays cannot strand it.
+        var work = System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea;
+        if (work is null || !NativeWindow.MoveToPhysicalPosition(hwnd, work.Value.Left + 28, work.Value.Top + 28)) return;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+        { Settings.Left = Left; Settings.Top = Top; SaveSettings(); }));
+    }
+    internal static bool HasReachableWorkArea(System.Drawing.Rectangle window, IEnumerable<System.Drawing.Rectangle> workAreas) =>
+        workAreas.Any(work => {
+            var area = System.Drawing.Rectangle.Intersect(window, work);
+            return area.Width >= Math.Min(96, window.Width) && area.Height >= Math.Min(96, window.Height);
+        });
     public void ApplySettings()
     {
         HoverHints.SetPalette(this, ThemePalette.Get(Settings.Theme));
@@ -349,7 +373,7 @@ public sealed class MainWindow : Window
     }
     public async Task RefreshAsync()
     { await Task.WhenAll(Engine.RefreshDevicesAsync(), Engine.RefreshWeatherAsync()); }
-    public void ToggleVisible() => Dispatcher.Invoke(() => { if (IsVisible) Hide(); else { Show(); Activate(); } });
+    public void ToggleVisible() => Dispatcher.Invoke(() => { if (IsVisible) Hide(); else { EnsureReachablePosition(); Show(); Activate(); } });
     public async Task QuitAsync()
     {
         if (disposed) return; disposed = true; quitting = true;

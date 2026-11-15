@@ -14,6 +14,8 @@ internal static class NativeWindow
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLong64(IntPtr hwnd, int index, IntPtr value);
     [DllImport("user32.dll")] internal static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint key);
     [DllImport("user32.dll")] internal static extern bool UnregisterHotKey(IntPtr hwnd, int id);
+    [DllImport("user32.dll", SetLastError=true)] internal static extern bool GetWindowRect(IntPtr hwnd, out System.Drawing.Rectangle rectangle);
+    [DllImport("user32.dll", SetLastError=true)] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr RegisterDeviceNotificationW(IntPtr hwnd, IntPtr filter, uint flags);
     [DllImport("user32.dll")] internal static extern bool UnregisterDeviceNotification(IntPtr notification);
     internal static IntPtr WatchHid(IntPtr hwnd) {
@@ -24,6 +26,7 @@ internal static class NativeWindow
             return RegisterDeviceNotificationW(hwnd,data,0);
         } finally { Marshal.FreeHGlobal(data); }
     }
+    internal static bool MoveToPhysicalPosition(IntPtr hwnd, int x, int y) => SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, 0x0001 | 0x0004 | 0x0010);
     public static void Apply(Window window, AppSettings settings)
     {
         var hwnd = new WindowInteropHelper(window).Handle; if (hwnd == IntPtr.Zero) return;

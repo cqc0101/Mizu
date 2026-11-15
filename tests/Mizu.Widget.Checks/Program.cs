@@ -32,6 +32,12 @@ timer.Tick+=(_,_)=>{timer.Stop();frame.Continue=false;};timer.Start();System.Win
 static int Run() {
 var app=new System.Windows.Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };int checks=0;
 void Check(bool result,string message){if(!result)throw new Exception(message);checks++;}
+var reachable=typeof(MainWindow).GetMethod("HasReachableWorkArea",BindingFlags.NonPublic|BindingFlags.Static)!;
+bool OnScreen(System.Drawing.Rectangle window,params System.Drawing.Rectangle[] areas)=>(bool)reachable.Invoke(null,new object[]{window,areas})!;
+Check(!OnScreen(new System.Drawing.Rectangle(2600,200,360,480),new System.Drawing.Rectangle(0,0,1920,1080)),"Disconnected monitor placement is detected");
+Check(!OnScreen(new System.Drawing.Rectangle(-350,20,360,480),new System.Drawing.Rectangle(0,0,1920,1080)),"Tiny clipped overlap cannot strand the widget");
+Check(OnScreen(new System.Drawing.Rectangle(-40,20,360,480),new System.Drawing.Rectangle(0,0,1920,1080)),"A useful portion remains reachable across a negative-coordinate display edge");
+Check(OnScreen(new System.Drawing.Rectangle(2700,200,360,480),new System.Drawing.Rectangle(0,0,1920,1080),new System.Drawing.Rectangle(2560,0,1440,900)),"Widgets on a connected secondary display stay in place");
 foreach(var theme in new[]{"light","dark"}) foreach(var radius in new[]{0.0,16.0,30.0,64.0}) foreach(var compact in new[]{false,true}) {
 var settings=new AppSettings { Theme=theme,CornerRadius=radius,CompactMode=compact,ShowTodo=true,WeatherDaily=true,ForecastDays=7,ForecastHours=12,Todos=[new(){Text="Test todo"}] };
 var surface=new WidgetSurface(WidgetState.Preview(),settings);var height=surface.Layout.Height;
