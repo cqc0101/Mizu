@@ -47,8 +47,15 @@ public sealed class App : Application
                 var store = new SettingsStore(); var settings = store.Load();
                 // A click-through state is useful during a session, but a login launch
                 // must always leave the widget visible and directly recoverable.
-                if (args.Contains("--startup") && settings.ClickThrough) { settings.ClickThrough = false; store.Save(settings); }
+                if (args.Contains("--startup")) settings.ClickThrough = false;
                 var window = new MainWindow(settings); app.MainWindow = window;
+                if (settings.AutoStart)
+                {
+                    try { NativeWindow.SetAutoStart(true); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+                    { AppLog.Write("startup.repair", ex.GetType().Name); }
+                }
+                if (args.Contains("--startup")) window.SaveSettings();
                 window.Show(); return app.Run();
             }
             finally { app.singleInstance.ReleaseMutex(); app.singleInstance.Dispose(); }

@@ -19,6 +19,7 @@ public sealed class MainWindow : Window
     private readonly SettingsStore store;
     private readonly System.Windows.Forms.NotifyIcon tray;
     private readonly StackPanel toolbar;
+    private readonly Button lockButton;
     private readonly Grid layout;
     private readonly Grid mediaHost = new();
     private string? mediaKey;
@@ -66,6 +67,12 @@ public sealed class MainWindow : Window
         toolbar.Children.Add(IconButton("pin", "切换置顶", () => { Settings.AlwaysOnTop = !Settings.AlwaysOnTop; ApplySettings(); SaveSettings(); }));
         toolbar.Children.Add(IconButton("settings", "设置 · Ctrl+,", OpenSettings));
         toolbar.Children.Add(IconButton("close", "收起到托盘", Hide));
+        lockButton = IconButton("unlock", "锁定面板", () => {
+            Settings.PanelLocked = !Settings.PanelLocked;
+            if (Settings.PanelLocked) { Keyboard.ClearFocus(); settingsWindow?.Close(); }
+            ApplySettings(); SaveSettings();
+        });
+        toolbar.Children.Add(lockButton);
         layout.Children.Add(toolbar);
         layout.RenderTransform = widgetScale;
         var stage = new Canvas(); stage.Children.Add(layout); Content = stage;
@@ -98,11 +105,13 @@ public sealed class MainWindow : Window
         PreviewMouseLeftButtonDown += (_, e) =>
         {
             if (e.OriginalSource is DependencyObject source && IsInteractive(source)) return;
+            if (Settings.PanelLocked) { e.Handled = true; return; }
             if (e.ClickCount == 2) { OpenSettings(); return; }
             try { DragMove(); Settings.Left = Left; Settings.Top = Top; SaveSettings(); } catch (InvalidOperationException) { }
         };
         PreviewKeyDown += async (_, e) =>
         {
+            if (Settings.PanelLocked) { e.Handled = true; return; }
             if (e.Key == Key.F5) { await RefreshAsync(); e.Handled = true; }
             if (e.Key == Key.OemComma && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) { OpenSettings(); e.Handled = true; }
             if (e.Key == Key.Escape) Hide();
@@ -118,7 +127,7 @@ public sealed class MainWindow : Window
             foreach (var button in toolbar.Children.OfType<Button>()) HoverHints.Close(button);
         }
         toolbar.BeginAnimation(OpacityProperty, new DoubleAnimation(visible ? 1 : 0, TimeSpan.FromMilliseconds(visible ? 160 : 220)));
-        if (visible) { todoHideDelay.Stop(); AnimateTodoFooter(true); }
+        if (visible && !Settings.PanelLocked) { todoHideDelay.Stop(); AnimateTodoFooter(true); }
         else if (todoEditor?.IsKeyboardFocusWithin != true) { todoHideDelay.Stop(); todoHideDelay.Start(); }
     }
     private void OnStateChanged()
@@ -131,7 +140,7 @@ public sealed class MainWindow : Window
     }
     private void AnimateTodoFooter(bool open, bool animate = true)
     {
-        open &= Settings.ShowTodo;
+        open &= Settings.ShowTodo && !Settings.PanelLocked;
         if (animate && footerAnimating && footerWanted == open) { UpdateTodoGeometry(); return; }
         footerWanted = open;
         if (open) todoHideDelay.Stop();
@@ -167,7 +176,7 @@ public sealed class MainWindow : Window
         todoEditorHost.Margin = new(30, baseHeight - 4, 0, 0);
         todoEditorHost.Opacity = Math.Clamp((reveal - .12) / .88, 0, 1);
         todoEditorHost.RenderTransform = new TranslateTransform(0, 8 * (1 - reveal));
-        todoEditorHost.IsHitTestVisible = footerWanted && reveal > .85;
+        todoEditorHost.IsHitTestVisible = !Settings.PanelLocked && footerWanted && reveal > .85;
         if (!footerAnimating && !widgetScale.HasAnimatedProperties) { Width = 356 * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
     }
     private bool IsInteractive(DependencyObject source)
@@ -197,10 +206,10 @@ public sealed class MainWindow : Window
     {
         if (msg == 0x007e) QueueEnsureReachablePosition(); // WM_DISPLAYCHANGE
         if (msg == 0x0312 && wParam.ToInt32() == 0x4d5a)
-        { EnsureReachablePosition(); Settings.ClickThrough = false; Show(); ApplySettings(); SaveSettings(); Activate(); handled = true; }
+        { ShowInteractive(); handled = true; }
         if (msg == 0x8001)
         {
-            EnsureReachablePosition(); Settings.ClickThrough = false; ApplySettings(); SaveSettings(); Show(); Activate(); handled = true;
+            ShowInteractive(); handled = true;
         }
         if (msg == 0x0219 || msg == 0x0218 && wParam.ToInt32() == 0x12) Engine.RequestConnectionRefresh();
         return IntPtr.Zero;
@@ -249,10 +258,26 @@ public sealed class MainWindow : Window
         var key = $"{Settings.ShowTodo}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
         if (key != todoKey) { BuildTodo(calculated); todoKey = key; }
         UpdateMediaControls();
+        ApplyPanelLock();
         Surface.InvalidateVisual(); NativeWindow.Apply(this, Settings);
-        if (!Settings.ShowTodo) AnimateTodoFooter(false, false);
+        if (!Settings.ShowTodo || Settings.PanelLocked) AnimateTodoFooter(false, false);
         else if (IsMouseOver) AnimateTodoFooter(true);
         UpdateTodoGeometry(); ResizeWidget(!heightChanged);
+    }
+    private void ApplyPanelLock()
+    {
+        var locked = Settings.PanelLocked;
+        foreach (var button in toolbar.Children.OfType<Button>())
+        {
+            button.Visibility = locked && button != lockButton ? Visibility.Collapsed : Visibility.Visible;
+            if (locked) HoverHints.Close(button);
+        }
+        var tip = locked ? "解锁面板" : "锁定面板";
+        System.Windows.Automation.AutomationProperties.SetName(lockButton, tip);
+        HoverHints.Set(lockButton, tip);
+        lockButton.Content = new IconView(locked ? "lock" : "unlock", Art.Brush(ThemePalette.Get(Settings.Theme).Secondary)) { Width = 13, Height = 13 };
+        Surface.IsHitTestVisible = todoHost.IsHitTestVisible = mediaHost.IsHitTestVisible = !locked;
+        if (locked) HoverHints.Close(Surface);
     }
     public void RequestSettingsPreview(bool scaleOnly = false)
     {
@@ -370,13 +395,18 @@ public sealed class MainWindow : Window
     }
     public void OpenSettings()
     {
-        Settings.ClickThrough = false; ApplySettings();
+        Settings.ClickThrough = false; Settings.PanelLocked = false; ApplySettings(); SaveSettings();
         if (settingsWindow is { IsLoaded: true }) { settingsWindow.Activate(); return; }
         settingsWindow = new(this); settingsWindow.Closed += (_, _) => settingsWindow = null; settingsWindow.Show();
     }
     public async Task RefreshAsync()
     { await Task.WhenAll(Engine.RefreshDevicesAsync(), Engine.RefreshWeatherAsync()); }
-    public void ToggleVisible() => Dispatcher.Invoke(() => { if (IsVisible) Hide(); else { EnsureReachablePosition(); Show(); Activate(); } });
+    internal void ShowInteractive()
+    {
+        Settings.ClickThrough = false; ApplySettings(); SaveSettings();
+        Show(); EnsureReachablePosition(); Activate();
+    }
+    public void ToggleVisible() => Dispatcher.Invoke(() => { if (IsVisible) Hide(); else ShowInteractive(); });
     public async Task QuitAsync()
     {
         if (disposed) return; disposed = true; quitting = true;

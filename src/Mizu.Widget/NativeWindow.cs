@@ -14,7 +14,15 @@ internal static class NativeWindow
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLong64(IntPtr hwnd, int index, IntPtr value);
     [DllImport("user32.dll")] internal static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint key);
     [DllImport("user32.dll")] internal static extern bool UnregisterHotKey(IntPtr hwnd, int id);
-    [DllImport("user32.dll", SetLastError=true)] internal static extern bool GetWindowRect(IntPtr hwnd, out System.Drawing.Rectangle rectangle);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll", EntryPoint="GetWindowRect", SetLastError=true)] private static extern bool ReadWindowRect(IntPtr hwnd, out NativeRect rectangle);
+    internal static bool GetWindowRect(IntPtr hwnd, out System.Drawing.Rectangle rectangle)
+    {
+        var success = ReadWindowRect(hwnd, out var native);
+        rectangle = System.Drawing.Rectangle.FromLTRB(native.Left, native.Top, native.Right, native.Bottom);
+        return success;
+    }
     [DllImport("user32.dll", SetLastError=true)] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern IntPtr RegisterDeviceNotificationW(IntPtr hwnd, IntPtr filter, uint flags);
     [DllImport("user32.dll")] internal static extern bool UnregisterDeviceNotification(IntPtr notification);

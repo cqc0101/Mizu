@@ -51,6 +51,26 @@ Check(pixels[((h/2)*w+w/2)*4+3]>0,"Material present");
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
 var main=new MainWindow(settingsLive,WidgetState.Preview(),preview:true,persistSettings:false);main.Show();main.UpdateLayout();
+var nativeType=typeof(MainWindow).Assembly.GetType("Mizu.Widget.NativeWindow")!;
+var readBounds=nativeType.GetMethod("GetWindowRect",BindingFlags.NonPublic|BindingFlags.Static)!;
+foreach(var position in new[]{new Point(220,140),new Point(-120,60)}) {
+    main.Left=position.X;main.Top=position.Y;main.UpdateLayout();
+    object?[] nativeArgs={new System.Windows.Interop.WindowInteropHelper(main).Handle,null};
+    Check((bool)readBounds.Invoke(null,nativeArgs)!,"Native bounds can be read");
+    var bounds=(System.Drawing.Rectangle)nativeArgs[1]!;
+    var dpi=VisualTreeHelper.GetDpi(main);
+    Check(Math.Abs(bounds.Width-main.ActualWidth*dpi.DpiScaleX)<=2 && Math.Abs(bounds.Height-main.ActualHeight*dpi.DpiScaleY)<=2,"Native dimensions are independent of window coordinates");
+}
+settingsLive.ClickThrough=true;main.ApplySettings();main.Hide();main.ToggleVisible();
+Check(main.IsVisible && !settingsLive.ClickThrough,"Tray recovery shows an interactive widget");
+var lockControl=Desc<Button>(main).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="锁定面板");
+lockControl.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));main.UpdateLayout();
+Check(settingsLive.PanelLocked && !main.Surface.IsHitTestVisible,"Lock blocks the content while leaving the window available to unlock");
+Check(Desc<Button>(main).Where(b=>b.Parent is StackPanel p && p.Parent==main.VisualContent).Count(b=>b.Visibility==Visibility.Visible)==1,"Only the unlock control remains in the locked toolbar");
+main.ApplySettings();
+Check(settingsLive.PanelLocked && lockControl.IsEnabled && lockControl.Visibility==Visibility.Visible,"Settings reflow preserves the accessible unlock control");
+lockControl.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(!settingsLive.PanelLocked && main.Surface.IsHitTestVisible,"Unlock restores content interaction");
 var grid=(Grid)main.VisualContent;
 var toolbar=(StackPanel)typeof(MainWindow).GetField("toolbar",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(main)!;
 Check(toolbar.Opacity==0 && !toolbar.IsHitTestVisible,"Toolbar is absent and cannot intercept clicks before hover");

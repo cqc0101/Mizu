@@ -163,9 +163,10 @@ try
     settings.Scale = 99; settings.ProtectedPushToken = SettingsStore.Protect("test-private-token"); store.Save(settings);
     var restored = store.Load();
     Check(restored.Scale == 1.5 && SettingsStore.Unprotect(restored.ProtectedPushToken) == "test-private-token", "Bounded settings and DPAPI roundtrip");
-    settings.TextScale = 1.2; settings.TextWeight = 600; settings.ShowWeather = false; settings.ShowTodo = true; settings.CornerRadius = 47; settings.ForecastHours = 9; settings.ForecastDays = 6;
+    settings.TextScale = 1.2; settings.TextWeight = 600; settings.ShowWeather = false; settings.ShowTodo = true; settings.CornerRadius = 47; settings.ForecastHours = 9; settings.ForecastDays = 6; settings.PanelLocked = true;
     settings.Todos = [new() { Text = "待办一" }, new() { Text = "待办二", Completed = true }];
     store.Save(settings); var custom = store.Load();
+    Check(custom.PanelLocked, "Panel lock survives a settings reload");
     Check(custom.TextScale == 1.2 && custom.TextWeight == 600 && !custom.ShowWeather && custom.ShowTodo && custom.CornerRadius == 47 && custom.ForecastDays == 6 && custom.Todos[1].Completed, "Custom content and todo completion survive settings reload");
     File.WriteAllText(store.FilePath, "{}"); var migrated = store.Load();
     Check(migrated.ShowWeather && migrated.ShowDevices && migrated.ShowCpu && migrated.ShowMemory && !migrated.ShowTodo && migrated.CornerRadius == 30, "Legacy settings keep sensible visible defaults");

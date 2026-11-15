@@ -41,6 +41,11 @@ public static class Art
             case "refresh":
                 d.DrawGeometry(null, p, Geometry.Parse("M 19,8 A 8,8 0 1 0 19,17 M 19,3 L 19,8 14,8")); break;
             case "pin": d.DrawGeometry(null, p, Geometry.Parse("M 8,3 L 16,3 M 9,3 L 9,10 6,14 18,14 15,10 15,3 M 12,14 L 12,22")); break;
+            case "lock":
+            case "unlock":
+                d.DrawRoundedRectangle(null, p, new(5, 10, 14, 11), 2.5, 2.5);
+                d.DrawGeometry(null, p, Geometry.Parse(kind == "lock" ? "M 8,10 L 8,7 A 4,4 0 0 1 16,7 L 16,10" : "M 8,10 L 8,7 A 4,4 0 0 1 16,7"));
+                L(12,14,12,17); break;
             case "cpu":
                 d.DrawRoundedRectangle(null, p, new(6, 6, 12, 12), 2, 2); d.DrawRectangle(null, p, new(9, 9, 6, 6));
                 for (int i = 8; i <= 16; i += 4) { L(i, 2, i, 5); L(i, 19, i, 22); L(2, i, 5, i); L(19, i, 22, i); } break;

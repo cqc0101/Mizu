@@ -49,6 +49,7 @@ public sealed class AppSettings
     public List<TodoItem> Todos { get; set; } = [];
     public bool AlwaysOnTop { get; set; }
     public bool ClickThrough { get; set; }
+    public bool PanelLocked { get; set; }
     public bool AutoStart { get; set; }
     public bool TemperatureEnabled { get; set; }
     public Place? Location { get; set; }

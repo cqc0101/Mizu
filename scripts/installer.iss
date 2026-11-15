@@ -68,6 +68,7 @@ var
 begin
   if CurUninstallStep = usUninstall then
     if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Mizu', StartupCommand) then
-      if CompareText(StartupCommand, '"' + ExpandConstant('{app}\app\Mizu.exe') + '"') = 0 then
+      if (CompareText(StartupCommand, '"' + ExpandConstant('{app}\app\Mizu.exe') + '"') = 0) or
+         (CompareText(StartupCommand, '"' + ExpandConstant('{app}\app\Mizu.exe') + '" --startup') = 0) then
         RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Mizu');
 end;
