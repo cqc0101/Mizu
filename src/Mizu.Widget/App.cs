@@ -44,7 +44,11 @@ public sealed class App : Application
             }
             try
             {
-                var window = new MainWindow(new SettingsStore().Load()); app.MainWindow = window;
+                var store = new SettingsStore(); var settings = store.Load();
+                // A click-through state is useful during a session, but a login launch
+                // must always leave the widget visible and directly recoverable.
+                if (args.Contains("--startup") && settings.ClickThrough) { settings.ClickThrough = false; store.Save(settings); }
+                var window = new MainWindow(settings); app.MainWindow = window;
                 window.Show(); return app.Run();
             }
             finally { app.singleInstance.ReleaseMutex(); app.singleInstance.Dispose(); }

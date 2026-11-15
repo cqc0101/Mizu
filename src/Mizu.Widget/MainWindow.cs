@@ -198,7 +198,10 @@ public sealed class MainWindow : Window
         if (msg == 0x007e) QueueEnsureReachablePosition(); // WM_DISPLAYCHANGE
         if (msg == 0x0312 && wParam.ToInt32() == 0x4d5a)
         { EnsureReachablePosition(); Settings.ClickThrough = false; Show(); ApplySettings(); SaveSettings(); Activate(); handled = true; }
-        if (msg == 0x8001) { EnsureReachablePosition(); Show(); Activate(); handled = true; }
+        if (msg == 0x8001)
+        {
+            EnsureReachablePosition(); Settings.ClickThrough = false; ApplySettings(); SaveSettings(); Show(); Activate(); handled = true;
+        }
         if (msg == 0x0219 || msg == 0x0218 && wParam.ToInt32() == 0x12) Engine.RequestConnectionRefresh();
         return IntPtr.Zero;
     }

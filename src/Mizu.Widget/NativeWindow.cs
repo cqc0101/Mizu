@@ -41,7 +41,7 @@ internal static class NativeWindow
     public static void SetAutoStart(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        if (enabled) key.SetValue("Mizu", "\"" + Environment.ProcessPath + "\"");
+        if (enabled) key.SetValue("Mizu", "\"" + Environment.ProcessPath + "\" --startup");
         else key.DeleteValue("Mizu", false);
     }
 }
