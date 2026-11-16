@@ -10,26 +10,38 @@ try {
 var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
+var themeSettings=new AppSettings {RandomThemeEnabled=true,ThemeIntervalMinutes=1,Theme="light"};var themeRotation=new ThemeRotation();
+Check(!themeRotation.Update(themeSettings,now,new[]{"light","dark"}) && !themeRotation.Update(themeSettings,now.AddSeconds(59),new[]{"light","dark"}),"Theme stays stable before its minute deadline");
+Check(themeRotation.Update(themeSettings,now.AddMinutes(1),new[]{"light","dark"}) && themeSettings.Theme=="dark","Random theme changes at deadline and excludes current color");
+themeSettings.RandomThemeEnabled=false;Check(!themeRotation.Update(themeSettings,now.AddHours(12),new[]{"light","dark"}),"Disabled random theme does not switch");
+var legacyMinutes=new AppSettings {VocabularyIntervalSeconds=61,ThemeIntervalMinutes=9999};legacyMinutes.Validate();
+Check(legacyMinutes.VocabularyMinutes==2 && legacyMinutes.ThemeIntervalMinutes==720,"Legacy seconds round upward to minutes and theme supports twelve hours");
+legacyMinutes.VocabularyIntervalMinutes=720;legacyMinutes.Validate();Check(legacyMinutes.VocabularyIntervalSeconds==43200,"Vocabulary supports a twelve-hour deadline");
+var activeReceiver=new Peripheral("receiver","ATK A9 Ultra Max 2.0 Tri-Mode",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,90,false,"ATK",now);
+var activeBluetooth=activeReceiver with {Id="bluetooth",Name="ATK A9 ULTRA MAX 2.0",Link=LinkKind.Bluetooth,ContainerId="bt-container"};
+Check(ActivePeripheralFilter.Select(new[]{activeReceiver,activeBluetooth}).Single().Link==LinkKind.Bluetooth,"Active ATK channel variants collapse to Bluetooth");
+Check(ActivePeripheralFilter.Select(new[]{activeReceiver,activeBluetooth with {State=LinkState.Offline}}).Single().Link==LinkKind.Receiver,"Receiver is shown after Bluetooth disconnects");
+Check(ActivePeripheralFilter.Select(new[]{activeReceiver,activeReceiver with {Id="other",Name="Logitech MX Master 3"}}).Count==2,"Separate active mice remain separate devices");
 var parsedWords=VocabularyImport.Parse("word,meaning\nserene,\"宁静,平和\"\n\"say \"\"hello\"\"\",问好", ".csv");
 Check(parsedWords.Count==2 && parsedWords[0].Meaning=="宁静,平和" && parsedWords[1].Word=="say \"hello\"", "CSV handles headers, quoted commas and escaped quotes");
 Check(VocabularyImport.Parse("serene\t宁静\ncalm\t平静", ".tsv").Count==2 && VocabularyImport.Parse("serene\ncalm", ".txt").Count==2,"TSV and word-only text import");
 Check(VocabularyImport.Parse("[{\"word\":\"serene\",\"meaning\":\"宁静\"}]", ".json")[0].Meaning=="宁静", "JSON imports case-insensitive word and meaning fields");
 bool badImport=false;try {VocabularyImport.Parse("[{\"Meaning\":\"missing word\"}]", ".json");}catch(FormatException){badImport=true;}
 Check(badImport,"Malformed JSON book rejects missing words before any import");
-var rotationSettings=new AppSettings {ShowVocabulary=true,VocabularyVisibleRows=2,VocabularyIntervalSeconds=10,Vocabulary=[new(){Word="one",Meaning="一"},new(){Word="two"},new(){Word="three"},new(){Word="four"}]};
+var rotationSettings=new AppSettings {ShowVocabulary=true,VocabularyVisibleRows=2,VocabularyIntervalMinutes=1,Vocabulary=[new(){Word="one",Meaning="一"},new(){Word="two"},new(){Word="three"},new(){Word="four"}]};
 var rotation=new VocabularyRotation();rotation.Update(rotationSettings,now);
 Check(rotation.Visible.Select(w=>w.Word).SequenceEqual(new[]{"one","two"}),"Sequential rotation starts with configured group size");
-rotation.Update(rotationSettings,now.AddSeconds(9));Check(rotation.Visible[0].Word=="one","Words stay stable until deadline");
-rotation.Update(rotationSettings,now.AddSeconds(10));Check(rotation.Visible[0].Word=="three","Words rotate at configured deadline");
-rotation.Update(rotationSettings,now.AddSeconds(20));Check(rotation.Visible[0].Word=="one","Sequential rotation wraps after the final group");
-rotationSettings.ShowVocabulary=false;rotation.Update(rotationSettings,now.AddSeconds(100));Check(rotation.Visible[0].Word=="one","Hidden vocabulary pauses automatic rotation");
-rotationSettings.ShowVocabulary=true;rotationSettings.VocabularyRandom=true;rotation.Update(rotationSettings,now.AddSeconds(100));
-bool uniqueGroups=true; for(int i=0;i<100;i++){rotation.Advance(1,now.AddSeconds(100+i));uniqueGroups &= rotation.Visible.Count==2 && rotation.Visible.Distinct().Count()==2;}
+rotation.Update(rotationSettings,now.AddSeconds(59));Check(rotation.Visible[0].Word=="one","Words stay stable until deadline");
+rotation.Update(rotationSettings,now.AddSeconds(60));Check(rotation.Visible[0].Word=="three","Words rotate at configured deadline");
+rotation.Update(rotationSettings,now.AddSeconds(120));Check(rotation.Visible[0].Word=="one","Sequential rotation wraps after the final group");
+rotationSettings.ShowVocabulary=false;rotation.Update(rotationSettings,now.AddSeconds(180));Check(rotation.Visible[0].Word=="one","Hidden vocabulary pauses automatic rotation");
+rotationSettings.ShowVocabulary=true;rotationSettings.VocabularyRandom=true;rotation.Update(rotationSettings,now.AddSeconds(180));
+bool uniqueGroups=true; for(int i=0;i<100;i++){rotation.Advance(1,now.AddSeconds(180+i));uniqueGroups &= rotation.Visible.Count==2 && rotation.Visible.Distinct().Count()==2;}
 Check(uniqueGroups,"Random groups contain the requested number of distinct words");
 rotationSettings.VocabularyHideMeaning=true;var wordArea=WidgetLayout.Calculate(rotationSettings).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
 Check(wordArea.Height==84,"Hidden meanings release unused row height");
 rotationSettings.ShowClock=true;Check(WidgetLayout.Calculate(rotationSettings).Sections[0].Kind==WidgetSection.Clock,"Clock appears before weather");
-rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();Check(rotationSettings.VocabularyVisibleRows==8 && rotationSettings.VocabularyIntervalSeconds==5,"Invalid rotation settings are bounded");
+rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();Check(rotationSettings.VocabularyVisibleRows==8 && rotationSettings.VocabularyIntervalSeconds==60,"Invalid rotation settings are bounded");
 var q = HidppProtocol.Request(1, 7, 1, 10);
 byte[] reply = new byte[20];
 new byte[] { 0x11, 1, 7, 0x1a, 82, 8, 0 }.CopyTo(reply, 0);
@@ -197,7 +209,7 @@ try
     Check(wordPager.Advance(0,-120,3,0,pageSize:1)==1 && wordPager.Advance(1,-120,3,200,pageSize:1)==2 && wordPager.Advance(2,-120,3,400,pageSize:1)==2,"Single-word paging reaches every entry and stops at the end");
     settings.Scale = 99; settings.ProtectedPushToken = SettingsStore.Protect("test-private-token"); store.Save(settings);
     var restored = store.Load();
-    Check(restored.Scale == 1.5 && SettingsStore.Unprotect(restored.ProtectedPushToken) == "test-private-token", "Bounded settings and DPAPI roundtrip");
+    Check(restored.Scale == 1.2 && SettingsStore.Unprotect(restored.ProtectedPushToken) == "test-private-token", "Bounded settings and DPAPI roundtrip");
     settings.TextScale = 1.2; settings.TextWeight = 600; settings.ShowWeather = false; settings.ShowTodo = true; settings.CornerRadius = 47; settings.ForecastHours = 9; settings.ForecastDays = 6; settings.PanelLocked = true;
     settings.Todos = [new() { Text = "待办一" }, new() { Text = "待办二", Completed = true }];
     store.Save(settings); var custom = store.Load();

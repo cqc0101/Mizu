@@ -15,6 +15,8 @@ public sealed class AppSettings
     public int TextWeight { get; set; } = 400;
     public double GlassOpacity { get; set; } = .62;
     public string Theme { get; set; } = "light";
+    public bool RandomThemeEnabled { get; set; }
+    public int ThemeIntervalMinutes { get; set; } = 30;
     public double CornerRadius { get; set; } = 30;
     public bool CompactMode { get; set; }
     public bool ShowWeather { get; set; } = true;
@@ -36,6 +38,8 @@ public sealed class AppSettings
     public int VocabularyVisibleRows { get; set; } = 1;
     public bool VocabularyRandom { get; set; }
     public int VocabularyIntervalSeconds { get; set; } = 30;
+    public int? VocabularyIntervalMinutes { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public int VocabularyMinutes => Math.Clamp(VocabularyIntervalMinutes ?? (int)Math.Ceiling(VocabularyIntervalSeconds / 60d), 1, 720);
     public bool VocabularyHideMeaning { get; set; }
     public int VocabularySpacing { get; set; } = 8;
     public bool HideInactiveDevices { get; set; }
@@ -80,7 +84,7 @@ public sealed class AppSettings
         if (!System.Net.IPAddress.TryParse(NetworkProbeTarget, out var probe) || probe.Equals(System.Net.IPAddress.Any) || probe.Equals(System.Net.IPAddress.IPv6Any)) NetworkProbeTarget = "1.1.1.1";
         NetworkProbeTargets = (NetworkProbeTargets ?? new List<string> { NetworkProbeTarget }).Select(NetworkService.NormalizeTarget).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToList();
         if (NetworkProbeTargets.Count > 0) NetworkProbeTarget = NetworkProbeTargets[0];
-        Scale = double.IsFinite(Scale) ? Math.Clamp(Scale, .4, 1.5) : 1;
+        Scale = double.IsFinite(Scale) ? Math.Clamp(Scale, .4, 1.2) : 1;
         TextScale = double.IsFinite(TextScale) ? Math.Clamp(TextScale, .85, 1.25) : 1;
         TextWeight = Math.Clamp(TextWeight, 300, 700);
         GlassOpacity = double.IsFinite(GlassOpacity) ? Math.Clamp(GlassOpacity, .15, .95) : .62;
@@ -89,7 +93,9 @@ public sealed class AppSettings
         VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, 8);
         VocabularySpacing = Math.Clamp(VocabularySpacing, 0, 40);
         SectionOrder = (SectionOrder ?? []).Where(s => Enum.IsDefined(s)).Distinct().Concat(new AppSettings().SectionOrder).Distinct().ToList();
-        VocabularyIntervalSeconds = Math.Clamp(VocabularyIntervalSeconds, 5, 3600);
+        VocabularyIntervalMinutes = VocabularyMinutes;
+        VocabularyIntervalSeconds = VocabularyMinutes * 60;
+        ThemeIntervalMinutes = Math.Clamp(ThemeIntervalMinutes, 1, 720);
         Vocabulary = (Vocabulary ?? []).Where(w => w is not null && !string.IsNullOrWhiteSpace(w.Word)).Take(500).ToList();
         foreach (var entry in Vocabulary)
         {

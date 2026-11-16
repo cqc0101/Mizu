@@ -23,7 +23,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     {
         get
         {
-            var visible = state.Devices.Where(d => !settings.HiddenDevices.Contains(d.Id) && (!settings.HideInactiveDevices || d.State == LinkState.Online)).Select(d => d with
+            var candidates = state.Devices.Where(d => !settings.HiddenDevices.Contains(d.Id)).ToArray();
+            var active = settings.HideInactiveDevices ? ActivePeripheralFilter.Select(candidates) : candidates;
+            var visible = active.Select(d => d with
     { Name = settings.NameOverrides.GetValueOrDefault(d.Id, d.Name), Kind = settings.TypeOverrides.GetValueOrDefault(d.Id, d.Kind) })
                 .OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.ObservedAt.HasValue).ThenBy(d => d.Kind).ToArray();
             foreach (var device in visible) if (!deviceOrder.Contains(device.Id)) deviceOrder.Add(device.Id);

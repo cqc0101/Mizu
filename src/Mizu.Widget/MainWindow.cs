@@ -13,6 +13,7 @@ namespace Mizu.Widget;
 public sealed class MainWindow : Window
 {
     public AppSettings Settings { get; }
+    public event Action? SettingsApplied;
     public WidgetState State { get; }
     public WidgetSurface Surface { get; }
     public WidgetEngine Engine { get; }
@@ -52,6 +53,7 @@ public sealed class MainWindow : Window
     private string addActionsKey = "";
     private bool HasAddActions => Settings.ShowTodo || Settings.ShowVocabulary;
     private readonly System.Windows.Threading.DispatcherTimer displayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly ThemeRotation themeRotation = new();
     public MainWindow(AppSettings settings, WidgetState? state = null, bool preview = false, bool persistSettings = true)
     {
         this.persistSettings = persistSettings;
@@ -107,7 +109,10 @@ public sealed class MainWindow : Window
             if (!preview) Engine.Start();
             if (!preview) displayTimer.Start();
         };
-        displayTimer.Tick += (_, _) => { if (IsVisible && (Settings.ShowClock || Settings.ShowVocabulary)) Surface.InvalidateVisual(); };
+        displayTimer.Tick += (_, _) => {
+            if (themeRotation.Update(Settings, DateTimeOffset.UtcNow, ThemePalette.All.Select(p => p.Id))) { ApplySettings(); SaveSettings(); }
+            if (IsVisible && (Settings.ShowClock || Settings.ShowVocabulary)) Surface.InvalidateVisual();
+        };
         todoHideDelay.Tick += (_, _) => { todoHideDelay.Stop(); if (!IsMouseOver && todoEditor?.IsKeyboardFocusWithin != true) AnimateTodoFooter(false); };
         IsVisibleChanged += (_, _) => { if (!IsVisible) { todoHideDelay.Stop(); AnimateTodoFooter(false, false); } };
         MouseEnter += (_, _) => SetHover(true);
@@ -258,6 +263,7 @@ public sealed class MainWindow : Window
         });
     public void ApplySettings()
     {
+        SettingsApplied?.Invoke();
         HoverHints.SetPalette(this, ThemePalette.Get(Settings.Theme));
         HoverHints.SetIsDark(this, ThemePalette.Get(Settings.Theme).Dark);
         var calculated = WidgetLayout.Calculate(Settings);
@@ -305,14 +311,15 @@ public sealed class MainWindow : Window
     }
     private void ResizeWidget(bool animate)
     {
-        double target = Math.Min(Settings.Scale, Math.Max(.25, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 82 : 0))));
+        double target = Math.Clamp(Settings.Scale, .4, 1.2);
         double start = widgetScale.ScaleX; int generation = ++resizeGeneration;
         double width = 356 * target, height = layout.Height * target;
         void Finish()
         {
             if (generation != resizeGeneration) return;
+            widgetScale.ScaleX = widgetScale.ScaleY = target;
             widgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null); widgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            widgetScale.ScaleX = widgetScale.ScaleY = target; layout.CacheMode = null;
+            layout.CacheMode = null;
             UpdateTodoGeometry();
             Width = width; Height = footerAnimating || editorAnimating ? Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + FooterHeight) * target) : layout.Height * target;
             if (IsLoaded && Top < SystemParameters.WorkArea.Bottom && Top + height > SystemParameters.WorkArea.Bottom)
@@ -321,7 +328,7 @@ public sealed class MainWindow : Window
         if (!animate || !IsLoaded || !Settings.SmoothResize || Math.Abs(start - target) < .0001) { Finish(); return; }
         // Resize the transparent HWND once to hold both sizes. Animate only the
         // content transform, then shrink the bounds and restore vector rendering.
-        double reserveScale = Math.Min(1.5, Math.Max(.25, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 82 : 0))));
+        double reserveScale = Math.Max(start, target);
         Width = Math.Max(Width, 356 * reserveScale); Height = Math.Max(Height, layout.Height * reserveScale);
         layout.CacheMode ??= new BitmapCache(1.5);
         var motion = new DoubleAnimation(start, target, TimeSpan.FromMilliseconds(150))

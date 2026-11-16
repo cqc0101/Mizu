@@ -23,6 +23,7 @@ public sealed class SettingsWindow : Window
     private readonly StackPanel vocabularyList = new();
     private readonly ListBox sectionOrderList = new() { AllowDrop = true, BorderThickness = new(0), Background = Brushes.Transparent };
     private Point sectionDragStart;
+    private ComboBox? themeSelector;
     private WidgetSection? sectionDrag;
     private readonly List<CheckBox> todoVisibilityToggles = [];
     private readonly List<CheckBox> poetryVisibilityToggles = [];
@@ -76,7 +77,8 @@ public sealed class SettingsWindow : Window
         AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push()); AddTab(tabs, "单词本", Vocabulary()); AddTab(tabs, "关于", About());
         Grid.SetRow(tabs, 1); root.Children.Add(tabs); Grid.SetRow(status, 2); root.Children.Add(status); Content = root;
         saveDelay.Tick += (_, _) => FlushPendingSave();
-        Closed += (_, _) => { FlushPendingSave(); lifetime.Cancel(); lifetime.Dispose(); };
+        widget.SettingsApplied += RefreshTheme;
+        Closed += (_, _) => { widget.SettingsApplied -= RefreshTheme; FlushPendingSave(); lifetime.Cancel(); lifetime.Dispose(); };
         SourceInitialized += (_, _) => theme.Apply(settings.Theme);
         BuildDevices(); BuildTodoList();
         Activated += (_, _) => { BuildDevices(); BuildTodoList(); };
@@ -129,15 +131,24 @@ public sealed class SettingsWindow : Window
         }
         else { widget.ApplySettings(); widget.SaveSettings(); }
     }
+    public void RefreshTheme()
+    {
+        theme.Apply(settings.Theme);
+        if (themeSelector is not null) themeSelector.SelectedIndex = Array.FindIndex(ThemePalette.All, p => p.Id == settings.Theme);
+    }
     private UIElement Appearance()
     {
         var panel = new StackPanel { Margin = new(1, 8, 12, 0) };
         panel.Children.Add(Label("半透明材质，暖灰与留白。", true));
         var themes = new ComboBox { ItemsSource = ThemePalette.All.Select(p => p.Name).ToArray(), SelectedIndex = Array.FindIndex(ThemePalette.All, p => p.Id == settings.Theme), Margin = new(0, 0, 0, 17), Padding = new(10, 7, 10, 7) };
-        themes.SelectionChanged += (_, _) => { if (themes.SelectedIndex >= 0) { settings.Theme = ThemePalette.All[themes.SelectedIndex].Id; Save(); } }; panel.Children.Add(themes);
+        themeSelector = themes;
+        themes.SelectionChanged += (_, _) => { if (themes.SelectedIndex >= 0 && settings.Theme != ThemePalette.All[themes.SelectedIndex].Id) { settings.Theme = ThemePalette.All[themes.SelectedIndex].Id; Save(); } }; panel.Children.Add(themes);
+        panel.Children.Add(Toggle("随机切换主题", settings.RandomThemeEnabled, v => { settings.RandomThemeEnabled = v; Save(); }));
+        panel.Children.Add(SliderRow("主题切换间隔", settings.ThemeIntervalMinutes, 1, 720, 1, "0' 分钟'", v => { settings.ThemeIntervalMinutes = (int)v; Save(); }));
         panel.Children.Add(SliderRow("玻璃浓度", settings.GlassOpacity * 100, 15, 95, 5, "0'%'", v => { settings.GlassOpacity = v / 100; Save(); }));
         panel.Children.Add(SliderRow("圆角半径 R", settings.CornerRadius, 0, 64, 1, "0", v => { settings.CornerRadius = v; Save(); }));
-        panel.Children.Add(SliderRow("组件大小", settings.Scale * 100, 40, 150, 1, "0'%'", v => { settings.Scale = v / 100; Save(scaleOnly: true); }, continuous: true));
+        panel.Children.Add(SliderRow("组件大小", settings.Scale * 100, 40, 120, 1, "0'%'", v => { settings.Scale = v / 100; Save(scaleOnly: true); }, continuous: true));
+        panel.Children.Add(Label("缩放始终遵循 40%–120% 的选择。内容超出屏幕时，可缩小组件或减少显示内容。", true));
         panel.Children.Add(Toggle("平滑缩放动画", settings.SmoothResize, v => { settings.SmoothResize = v; Save(); }));
         panel.Children.Add(SliderRow("组件字号", settings.TextScale * 100, 85, 125, 1, "0'%'", v => { settings.TextScale = v / 100; Save(); }, continuous: true));
         panel.Children.Add(Label("组件字重"));
@@ -332,7 +343,7 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(SliderRow("显示组数", settings.VocabularyVisibleRows, 1, 8, 1, "0' 组'", v => { settings.VocabularyVisibleRows = (int)v; Save(); }));
         panel.Children.Add(SliderRow("单词间距", settings.VocabularySpacing, 0, 40, 1, "0' px'", v => { settings.VocabularySpacing = (int)v; Save(); }));
         panel.Children.Add(Toggle("随机轮换（关闭则按录入顺序）", settings.VocabularyRandom, v => { settings.VocabularyRandom = v; Save(); }));
-        panel.Children.Add(SliderRow("轮换间隔", settings.VocabularyIntervalSeconds, 5, 3600, 5, "0' 秒'", v => { settings.VocabularyIntervalSeconds = (int)v; Save(); }));
+        panel.Children.Add(SliderRow("轮换间隔", settings.VocabularyMinutes, 1, 720, 1, "0' 分钟'", v => { settings.VocabularyIntervalMinutes = (int)v; Save(); }));
         panel.Children.Add(Toggle("隐藏中文释义（包括悬停提示）", settings.VocabularyHideMeaning, v => { settings.VocabularyHideMeaning = v; Save(); }));
         panel.Children.Add(Label("显示 1–8 组，按设置自动轮换，也可在单词区域滚轮切换；空词本不占空间。悬停组件可直接添加单词。", true));
         panel.Children.Add(ActionButton("导入单词本", (_, _) => ImportVocabulary()));

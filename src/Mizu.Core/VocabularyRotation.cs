@@ -16,9 +16,9 @@ public sealed class VocabularyRotation
         bool changed = !entries.SequenceEqual(settings.Vocabulary) || size != settings.VocabularyVisibleRows || random != settings.VocabularyRandom;
         entries = settings.Vocabulary.ToArray(); size = settings.VocabularyVisibleRows; random = settings.VocabularyRandom;
         if (changed) { start = 0; Select(); }
-        if (changed || seconds != settings.VocabularyIntervalSeconds || enabled != settings.ShowVocabulary)
-            deadline = now.AddSeconds(settings.VocabularyIntervalSeconds);
-        seconds = settings.VocabularyIntervalSeconds; enabled = settings.ShowVocabulary;
+        if (changed || seconds != settings.VocabularyMinutes * 60 || enabled != settings.ShowVocabulary)
+            deadline = now.AddMinutes(settings.VocabularyMinutes);
+        seconds = settings.VocabularyMinutes * 60; enabled = settings.ShowVocabulary;
         if (enabled && now >= deadline) Advance(1, now);
     }
     public void Advance(int direction, DateTimeOffset now)
