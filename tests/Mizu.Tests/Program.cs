@@ -10,6 +10,26 @@ try {
 var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
+var parsedWords=VocabularyImport.Parse("word,meaning\nserene,\"宁静,平和\"\n\"say \"\"hello\"\"\",问好", ".csv");
+Check(parsedWords.Count==2 && parsedWords[0].Meaning=="宁静,平和" && parsedWords[1].Word=="say \"hello\"", "CSV handles headers, quoted commas and escaped quotes");
+Check(VocabularyImport.Parse("serene\t宁静\ncalm\t平静", ".tsv").Count==2 && VocabularyImport.Parse("serene\ncalm", ".txt").Count==2,"TSV and word-only text import");
+Check(VocabularyImport.Parse("[{\"word\":\"serene\",\"meaning\":\"宁静\"}]", ".json")[0].Meaning=="宁静", "JSON imports case-insensitive word and meaning fields");
+bool badImport=false;try {VocabularyImport.Parse("[{\"Meaning\":\"missing word\"}]", ".json");}catch(FormatException){badImport=true;}
+Check(badImport,"Malformed JSON book rejects missing words before any import");
+var rotationSettings=new AppSettings {ShowVocabulary=true,VocabularyVisibleRows=2,VocabularyIntervalSeconds=10,Vocabulary=[new(){Word="one",Meaning="一"},new(){Word="two"},new(){Word="three"},new(){Word="four"}]};
+var rotation=new VocabularyRotation();rotation.Update(rotationSettings,now);
+Check(rotation.Visible.Select(w=>w.Word).SequenceEqual(new[]{"one","two"}),"Sequential rotation starts with configured group size");
+rotation.Update(rotationSettings,now.AddSeconds(9));Check(rotation.Visible[0].Word=="one","Words stay stable until deadline");
+rotation.Update(rotationSettings,now.AddSeconds(10));Check(rotation.Visible[0].Word=="three","Words rotate at configured deadline");
+rotation.Update(rotationSettings,now.AddSeconds(20));Check(rotation.Visible[0].Word=="one","Sequential rotation wraps after the final group");
+rotationSettings.ShowVocabulary=false;rotation.Update(rotationSettings,now.AddSeconds(100));Check(rotation.Visible[0].Word=="one","Hidden vocabulary pauses automatic rotation");
+rotationSettings.ShowVocabulary=true;rotationSettings.VocabularyRandom=true;rotation.Update(rotationSettings,now.AddSeconds(100));
+bool uniqueGroups=true; for(int i=0;i<100;i++){rotation.Advance(1,now.AddSeconds(100+i));uniqueGroups &= rotation.Visible.Count==2 && rotation.Visible.Distinct().Count()==2;}
+Check(uniqueGroups,"Random groups contain the requested number of distinct words");
+rotationSettings.VocabularyHideMeaning=true;var wordArea=WidgetLayout.Calculate(rotationSettings).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
+Check(wordArea.Height==92,"Hidden meanings release unused row height");
+rotationSettings.ShowClock=true;Check(WidgetLayout.Calculate(rotationSettings).Sections[0].Kind==WidgetSection.Clock,"Clock appears before weather");
+rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();Check(rotationSettings.VocabularyVisibleRows==8 && rotationSettings.VocabularyIntervalSeconds==5,"Invalid rotation settings are bounded");
 var q = HidppProtocol.Request(1, 7, 1, 10);
 byte[] reply = new byte[20];
 new byte[] { 0x11, 1, 7, 0x1a, 82, 8, 0 }.CopyTo(reply, 0);

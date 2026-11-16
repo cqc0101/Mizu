@@ -32,6 +32,11 @@ public sealed class AppSettings
     public int PoetryLines { get; set; } = 1;
     public bool ShowTodo { get; set; }
     public bool ShowVocabulary { get; set; }
+    public bool ShowClock { get; set; }
+    public int VocabularyVisibleRows { get; set; } = 1;
+    public bool VocabularyRandom { get; set; }
+    public int VocabularyIntervalSeconds { get; set; } = 30;
+    public bool VocabularyHideMeaning { get; set; }
     public List<VocabularyEntry> Vocabulary { get; set; } = [];
     public bool ShowGraphs { get; set; } = true;
     public bool ShowConnectionIcons { get; set; } = true;
@@ -78,6 +83,8 @@ public sealed class AppSettings
         GlassOpacity = double.IsFinite(GlassOpacity) ? Math.Clamp(GlassOpacity, .15, .95) : .62;
         CornerRadius = double.IsFinite(CornerRadius) ? Math.Clamp(CornerRadius, 0, 64) : 30;
         PoetryLines = 1; // Kept only for compatibility with earlier settings files.
+        VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, 8);
+        VocabularyIntervalSeconds = Math.Clamp(VocabularyIntervalSeconds, 5, 3600);
         Vocabulary = (Vocabulary ?? []).Where(w => w is not null && !string.IsNullOrWhiteSpace(w.Word)).Take(500).ToList();
         foreach (var entry in Vocabulary)
         {

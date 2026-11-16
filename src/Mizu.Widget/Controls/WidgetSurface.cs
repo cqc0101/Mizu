@@ -14,9 +14,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     public bool PreviewMaterial { get; set; }
     public WidgetLayout Layout => WidgetLayout.Calculate(settings);
     private readonly DevicePager pager = new();
-    private readonly DevicePager vocabularyPager = new();
-    private int vocabularyPage;
-    private VocabularyEntry? CurrentWord => settings.Vocabulary.Count == 0 ? null : settings.Vocabulary[Math.Clamp(vocabularyPage, 0, settings.Vocabulary.Count - 1)];
+    private readonly VocabularyRotation vocabulary = new();
+    private int wordWheel;
+    private long lastWordWheel = long.MinValue / 2, lastWordTurn = long.MinValue / 2;
     private readonly List<string> deviceOrder = [];
     public IReadOnlyList<Peripheral> VisibleDevices
     {
@@ -55,6 +55,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         foreground = Art.Brush(Palette.Text); secondary = Art.Brush(Palette.Secondary);
         quiet = Art.Brush(Palette.Quiet); green = Art.Brush(Palette.Accent); line = Art.Brush(Palette.Line);
         var layout = Layout; double height = layout.Height + 44 * FooterReveal, radius = settings.CornerRadius;
+        vocabulary.Update(settings, DateTimeOffset.Now);
         var baseColor = Art.Brush(Palette.Base).Color;
         baseColor.A = PreviewMaterial ? (byte)212 : (byte)(settings.GlassOpacity * 255);
         var glass = new LinearGradientBrush(baseColor, Color.FromArgb((byte)Math.Max(16, baseColor.A - 18), baseColor.R, baseColor.G, baseColor.B), 95);
@@ -70,6 +71,10 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             if (i > 0 && !(section.Kind == WidgetSection.Todo && !settings.Todos.Any(t => !settings.HideCompletedTodos || !t.Completed))) Art.Line(d, Art.Pen(line, .8), 29, section.Top - 8, 327, section.Top - 8);
             switch (section.Kind)
             {
+                case WidgetSection.Clock:
+                    Art.Text(d, DateTime.Now.ToString("HH:mm"), 29, section.Top - 9, 58, foreground, Dpi, width: 298, weight: settings.TextWeight, alignment: TextAlignment.Center);
+                    Art.Text(d, DateTime.Now.ToString("MM.dd  dddd"), 29, section.Top + 65, 12, secondary, Dpi, width: 298, alignment: TextAlignment.Center);
+                    break;
                 case WidgetSection.Weather: DrawWeather(d, section.Top); break;
                 case WidgetSection.Devices: DrawDevices(d, section.Top); break;
                 case WidgetSection.Metrics: DrawMetrics(d, section.Top); break;
@@ -90,17 +95,18 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                         weight: settings.TextWeight, alignment: TextAlignment.Right);
                     break;
                 case WidgetSection.Vocabulary:
-                    if (CurrentWord is { } entry)
+                    for (int row = 0; row < vocabulary.Visible.Count; row++)
                     {
-                        Text(d, entry.Word, 31, section.Top + 3, 22, foreground, Dpi, medium: true, width: 294);
-                        Text(d, entry.Meaning, 31, section.Top + 39, 12, secondary, Dpi, width: 294);
+                        var entry = vocabulary.Visible[row]; var y = section.Top + row * (settings.VocabularyHideMeaning ? 46 : 76);
+                        Text(d, entry.Word, 31, y + 3, 22, foreground, Dpi, medium: true, width: 294);
+                        if (!settings.VocabularyHideMeaning) Text(d, entry.Meaning, 31, y + 39, 12, secondary, Dpi, width: 294);
                     }
                     break;
                 case WidgetSection.Todo:
                     break;
             }
         }
-        if (settings.ShowTodo && FooterReveal > 0) {
+        if ((settings.ShowTodo || settings.ShowVocabulary) && FooterReveal > 0) {
             d.PushOpacity(FooterReveal); Art.Line(d, Art.Pen(line, .7), 31, layout.Height - 12, 325, layout.Height - 12); d.Pop();
         }
         d.Pop();
@@ -246,7 +252,13 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         var mouse = e.GetPosition(this);
         if (words is not null && mouse.Y >= words.Top && mouse.Y <= words.Top + words.Height)
         {
-            vocabularyPage = vocabularyPager.Advance(vocabularyPage, e.Delta, settings.Vocabulary.Count, Environment.TickCount64, pageSize: 1);
+            var tick = Environment.TickCount64;
+            if (tick - lastWordWheel > 250 || Math.Sign(wordWheel) != Math.Sign(e.Delta)) wordWheel = 0;
+            lastWordWheel = tick;
+            if (tick - lastWordTurn >= 180) {
+                wordWheel += e.Delta;
+                if (Math.Abs(wordWheel) >= 120) { vocabulary.Update(settings, DateTimeOffset.Now); vocabulary.Advance(wordWheel < 0 ? 1 : -1, DateTimeOffset.Now); wordWheel = 0; lastWordTurn = tick; }
+            }
             HoverHints.Close(this); InvalidateVisual(); e.Handled = true; return;
         }
         var point = e.GetPosition(this); var area = Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Devices);
@@ -279,7 +291,13 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         }
         if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip;
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
-        if (area?.Kind == WidgetSection.Vocabulary && CurrentWord is { } word) tip = $"{word.Word}\n{word.Meaning}\n滚轮切换单词 · 双击打开设置";
+        if (area?.Kind == WidgetSection.Vocabulary) {
+            var row = (int)((p.Y - area.Top) / (settings.VocabularyHideMeaning ? 46 : 76));
+            if (row >= 0 && row < vocabulary.Visible.Count) {
+                var word = vocabulary.Visible[row];
+                tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮切换单词";
+            }
+        }
         if (area?.Kind == WidgetSection.Media) tip = $"{state.Media.Title}\n{state.Media.Artist}\n{state.Media.Status}";
         if (area?.Kind == WidgetSection.Poetry) tip = state.Poetry is { } poem ? $"{poem.Content}\n{poem.Dynasty} · {poem.Author} · 《{poem.Origin}》\n{poem.Source} · {(poem.Source == "内置公版诗库" ? "选取" : "更新")} {poem.FetchedAt.ToLocalTime():MM/dd HH:mm}" + (state.PoetryFailed ? poem.Source == "内置公版诗库" ? "\n在线暂不可用，正在使用内置诗库" : "\n在线更新失败，保留已缓存诗词" : "") : "诗词尚未就绪，可在设置中刷新";
         HoverHints.Set(this, tip, System.Windows.Controls.Primitives.PlacementMode.Mouse);

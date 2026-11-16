@@ -44,6 +44,10 @@ public sealed class MainWindow : Window
     private bool disposed;
     private readonly bool persistSettings;
     private bool repositionQueued;
+    private string footerMode = "";
+    private string addActionsKey = "";
+    private bool HasAddActions => Settings.ShowTodo || Settings.ShowVocabulary;
+    private readonly System.Windows.Threading.DispatcherTimer displayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     public MainWindow(AppSettings settings, WidgetState? state = null, bool preview = false, bool persistSettings = true)
     {
         this.persistSettings = persistSettings;
@@ -97,7 +101,9 @@ public sealed class MainWindow : Window
         {
             RestorePosition();
             if (!preview) Engine.Start();
+            if (!preview) displayTimer.Start();
         };
+        displayTimer.Tick += (_, _) => { if (IsVisible && (Settings.ShowClock || Settings.ShowVocabulary)) Surface.InvalidateVisual(); };
         todoHideDelay.Tick += (_, _) => { todoHideDelay.Stop(); if (!IsMouseOver && todoEditor?.IsKeyboardFocusWithin != true) AnimateTodoFooter(false); };
         IsVisibleChanged += (_, _) => { if (!IsVisible) { todoHideDelay.Stop(); AnimateTodoFooter(false, false); } };
         MouseEnter += (_, _) => SetHover(true);
@@ -140,7 +146,7 @@ public sealed class MainWindow : Window
     }
     private void AnimateTodoFooter(bool open, bool animate = true)
     {
-        open &= Settings.ShowTodo && !Settings.PanelLocked;
+        open &= HasAddActions && !Settings.PanelLocked;
         if (animate && footerAnimating && footerWanted == open) { UpdateTodoGeometry(); return; }
         footerWanted = open;
         if (open) todoHideDelay.Stop();
@@ -154,6 +160,7 @@ public sealed class MainWindow : Window
             // briefly shrinking the native window before expanding it again.
             TodoReveal = target; BeginAnimation(TodoRevealProperty, null);
             footerAnimating = false; UpdateTodoGeometry();
+            if (target == 0 && !disposed && Settings.ShowVocabulary && footerMode != "") { footerMode = ""; BuildAddEditor(); }
         }
         if (!animate || !IsLoaded || !Settings.SmoothResize) { Finish(); return; }
         footerAnimating = true;
@@ -169,7 +176,7 @@ public sealed class MainWindow : Window
     {
         if (layout is null || Surface is null) return;
         var baseHeight = WidgetLayout.Calculate(Settings).Height;
-        var reveal = Settings.ShowTodo ? Math.Clamp(TodoReveal, 0, 1) : 0;
+        var reveal = HasAddActions ? Math.Clamp(TodoReveal, 0, 1) : 0;
         var height = baseHeight + 44 * reveal;
         layout.Height = Surface.Height = height; Surface.FooterReveal = reveal;
         layout.Clip = new RectangleGeometry(new Rect(0, 0, 356, height), Settings.CornerRadius, Settings.CornerRadius);
@@ -255,12 +262,12 @@ public sealed class MainWindow : Window
         layout.Clip = new RectangleGeometry(new Rect(0, 0, 356, calculated.Height), Settings.CornerRadius, Settings.CornerRadius);
         toolbar.Margin = new(0, 6, Math.Max(24, Settings.CornerRadius * .65), 0);
         var area = calculated.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
-        var key = $"{Settings.ShowTodo}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
+        var key = $"{Settings.ShowTodo}|{Settings.ShowVocabulary}|{calculated.Height}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
         if (key != todoKey) { BuildTodo(calculated); todoKey = key; }
         UpdateMediaControls();
         ApplyPanelLock();
         Surface.InvalidateVisual(); NativeWindow.Apply(this, Settings);
-        if (!Settings.ShowTodo || Settings.PanelLocked) AnimateTodoFooter(false, false);
+        if (!HasAddActions || Settings.PanelLocked) AnimateTodoFooter(false, false);
         else if (IsMouseOver) AnimateTodoFooter(true);
         UpdateTodoGeometry(); ResizeWidget(!heightChanged);
     }
@@ -293,7 +300,7 @@ public sealed class MainWindow : Window
     }
     private void ResizeWidget(bool animate)
     {
-        double target = Math.Min(Settings.Scale, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (Settings.ShowTodo ? 44 : 0))));
+        double target = Math.Min(Settings.Scale, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 44 : 0))));
         double start = widgetScale.ScaleX; int generation = ++resizeGeneration;
         double width = 356 * target, height = layout.Height * target;
         void Finish()
@@ -309,7 +316,7 @@ public sealed class MainWindow : Window
         if (!animate || !IsLoaded || !Settings.SmoothResize || Math.Abs(start - target) < .0001) { Finish(); return; }
         // Resize the transparent HWND once to hold both sizes. Animate only the
         // content transform, then shrink the bounds and restore vector rendering.
-        double reserveScale = Math.Min(1.5, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (Settings.ShowTodo ? 44 : 0))));
+        double reserveScale = Math.Min(1.5, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 44 : 0))));
         Width = Math.Max(Width, 356 * reserveScale); Height = Math.Max(Height, layout.Height * reserveScale);
         layout.CacheMode ??= new BitmapCache(1.5);
         var motion = new DoubleAnimation(start, target, TimeSpan.FromMilliseconds(150))
@@ -342,19 +349,21 @@ public sealed class MainWindow : Window
     }
     private void BuildTodo(WidgetLayout calculated)
     {
+        var actionsKey = $"{Settings.ShowTodo}|{Settings.ShowVocabulary}";
+        if (actionsKey != addActionsKey) { footerMode = ""; addActionsKey = actionsKey; }
         HoverHints.CloseTree(todoHost);
         todoHost.Children.Clear(); todoEditorHost.Children.Clear(); todoEditor = null;
         var area = calculated.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
         todoHost.Visibility = area is null ? Visibility.Collapsed : Visibility.Visible;
-        todoEditorHost.Visibility = Settings.ShowTodo ? Visibility.Visible : Visibility.Collapsed;
-        if (!Settings.ShowTodo) return;
+        todoEditorHost.Visibility = HasAddActions ? Visibility.Visible : Visibility.Collapsed;
+        if (!HasAddActions) return;
         todoHost.VerticalAlignment = VerticalAlignment.Top; todoHost.HorizontalAlignment = HorizontalAlignment.Left;
         todoHost.Margin = new(30, area?.Top ?? 0, 0, 0); todoHost.Width = 296; todoHost.Height = area?.Height ?? 0;
         todoEditorHost.VerticalAlignment = VerticalAlignment.Top; todoEditorHost.HorizontalAlignment = HorizontalAlignment.Left;
         todoEditorHost.Width = 296; todoEditorHost.Height = 30;
         var palette = ThemePalette.Get(Settings.Theme); var dark = palette.Dark;
         var rows = new StackPanel();
-        foreach (var item in Settings.Todos.Where(t => !Settings.HideCompletedTodos || !t.Completed))
+        foreach (var item in Settings.Todos.Where(t => Settings.ShowTodo && (!Settings.HideCompletedTodos || !t.Completed)))
         {
             var label = new TextBlock { Text = item.Text, TextTrimming = TextTrimming.CharacterEllipsis, Width = 258, FontSize = 13 * Settings.TextScale, FontWeight = FontWeight.FromOpenTypeWeight(Settings.TextWeight),
                 Foreground = Art.Brush(item.Completed ? palette.Quiet : palette.Text), TextDecorations = item.Completed ? TextDecorations.Strikethrough : null };
@@ -369,6 +378,51 @@ public sealed class MainWindow : Window
             rows.Children.Add(check);
         }
         if (area is not null) todoHost.Children.Add(new ScrollViewer { Content = rows, Height = area.Height, VerticalAlignment = VerticalAlignment.Top, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        BuildAddEditor();
+    }
+    private void BuildAddEditor()
+    {
+        HoverHints.CloseTree(todoEditorHost); todoEditorHost.Children.Clear();
+        var palette = ThemePalette.Get(Settings.Theme); var dark = palette.Dark;
+        if (footerMode == "todo" && !Settings.ShowTodo || footerMode == "word" && !Settings.ShowVocabulary) footerMode = "";
+        if (footerMode == "" && Settings.ShowTodo && !Settings.ShowVocabulary) footerMode = "todo";
+        var content = new Grid();
+        todoEditor = new Border { Child = content, Height = 30, CornerRadius = new(8), Background = Art.Brush(dark ? "#12FFFFFF" : "#408D9C83") };
+        todoEditorHost.Children.Add(todoEditor);
+        if (footerMode == "") {
+            var actions = new System.Windows.Controls.Primitives.UniformGrid { Rows = 1 };
+            void Choice(string label, string mode) {
+                var button = IconButton("plus", label, () => { footerMode = mode; BuildAddEditor(); });
+                button.Width = double.NaN; button.Content = new TextBlock { Text = label, FontSize = 12 * Settings.TextScale, Foreground = Art.Brush(palette.Secondary) }; actions.Children.Add(button);
+            }
+            if (Settings.ShowTodo) Choice("添加事件", "todo");
+            if (Settings.ShowVocabulary) Choice("添加单词", "word");
+            content.Children.Add(actions); return;
+        }
+        content.ColumnDefinitions.Add(new() { Width = new(27) }); content.ColumnDefinitions.Add(new());
+        var back = IconButton("close", "返回添加选项", () => { footerMode = ""; BuildAddEditor(); }); content.Children.Add(back);
+        var editor = new Grid(); Grid.SetColumn(editor, 1); content.Children.Add(editor);
+        if (footerMode == "word") {
+            editor.ColumnDefinitions.Add(new()); editor.ColumnDefinitions.Add(new()); editor.ColumnDefinitions.Add(new() { Width = new(30) });
+            TextBox Field(string placeholder, int limit, int column) {
+                var box = new TextBox { MaxLength = limit, Padding = new(4), Background = Brushes.Transparent, BorderThickness = new(0), Foreground = Art.Brush(palette.Text), CaretBrush = Art.Brush(palette.Accent), FontSize = 12 * Settings.TextScale };
+                System.Windows.Automation.AutomationProperties.SetName(box, placeholder); HoverHints.Set(box, placeholder);
+                var hint = new TextBlock { Text = placeholder, Margin = new(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = Art.Brush(palette.Secondary), FontSize = 11 * Settings.TextScale, IsHitTestVisible = false };
+                var cell = new Grid(); cell.Children.Add(box); cell.Children.Add(hint); Grid.SetColumn(cell, column); editor.Children.Add(cell);
+                box.TextChanged += (_, _) => hint.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+                box.GotKeyboardFocus += (_, _) => { todoHideDelay.Stop(); AnimateTodoFooter(true); };
+                box.LostKeyboardFocus += (_, _) => { if (!IsMouseOver) SetHover(false); };
+                return box;
+            }
+            var word = Field("单词", 80, 0); var meaning = Field("释义", 200, 1);
+            void AddWord() {
+                if (!VocabularyImport.TryAdd(Settings, word.Text, meaning.Text, out var result)) { HoverHints.Set(word, result); return; }
+                word.Clear(); meaning.Clear(); ApplySettings(); SaveSettings();
+            }
+            var addWord = IconButton("plus", "保存单词", AddWord); Grid.SetColumn(addWord, 2); editor.Children.Add(addWord);
+            meaning.KeyDown += (_, e) => { if (e.Key == Key.Enter) { AddWord(); e.Handled = true; } };
+            return;
+        }
         var input = new TextBox { Background = Brushes.Transparent, BorderThickness = new(0), Foreground = Art.Brush(palette.Text), CaretBrush = Art.Brush(palette.Accent), FontSize = 12 * Settings.TextScale, FontWeight = FontWeight.FromOpenTypeWeight(Settings.TextWeight), Padding = new(5), MaxLength = 160, ToolTip = "输入待办，按 Enter 添加" };
         HoverHints.Set(input, "输入待办，按 Enter 添加");
         var inputRow = new Grid(); inputRow.ColumnDefinitions.Add(new()); inputRow.ColumnDefinitions.Add(new() { Width = new(30) }); inputRow.Children.Add(input);
@@ -377,8 +431,7 @@ public sealed class MainWindow : Window
         input.TextChanged += (_, _) => placeholder.Visibility = input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         var add = IconButton("plus", "添加待办", () => AddTodo(input)); Grid.SetColumn(add, 1); inputRow.Children.Add(add);
         input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { AddTodo(input); e.Handled = true; } };
-        todoEditor = new Border { Child = inputRow, VerticalAlignment = VerticalAlignment.Bottom, Height = 30, CornerRadius = new(8), Background = Art.Brush(dark ? "#12FFFFFF" : "#408D9C83"), Opacity = 1 };
-        todoEditorHost.Children.Add(todoEditor);
+        editor.Children.Add(inputRow);
         input.GotKeyboardFocus += (_, _) => { todoHideDelay.Stop(); AnimateTodoFooter(true); };
         input.LostKeyboardFocus += (_, _) => { if (!IsMouseOver) SetHover(false); };
     }
@@ -415,6 +468,7 @@ public sealed class MainWindow : Window
         NativeWindow.UnregisterHotKey(new WindowInteropHelper(this).Handle, 0x4d5a);
         if (hidNotification != IntPtr.Zero) { NativeWindow.UnregisterDeviceNotification(hidNotification);hidNotification=IntPtr.Zero; }
         todoHideDelay.Stop(); AnimateTodoFooter(false, false);
+        displayTimer.Stop();
         Hide(); await Engine.DisposeAsync(); Close(); Application.Current.Shutdown();
     }
 }

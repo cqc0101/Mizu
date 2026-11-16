@@ -158,6 +158,7 @@ public sealed class SettingsWindow : Window
     {
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
         panel.Children.Add(Label("留在桌面上的，由你决定。", true));
+        panel.Children.Add(Toggle("大时间（天气上方）", settings.ShowClock, v => { settings.ShowClock = v; Save(); }));
         panel.Children.Add(Toggle("天气", settings.ShowWeather, v => { settings.ShowWeather = v; Save(); }));
         panel.Children.Add(Toggle("外设电量", settings.ShowDevices, v => { settings.ShowDevices = v; Save(); }));
         panel.Children.Add(Toggle("CPU 负载", settings.ShowCpu, v => { settings.ShowCpu = v; Save(); }));
@@ -287,7 +288,13 @@ public sealed class SettingsWindow : Window
     {
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
         panel.Children.Add(Toggle("在组件上显示单词本", settings.ShowVocabulary, v => { settings.ShowVocabulary = v; Save(); }));
-        panel.Children.Add(Label("记录想记住的词。组件一次显示一个，滚轮切换；空词本不占空间。", true));
+        panel.Children.Add(SliderRow("显示组数", settings.VocabularyVisibleRows, 1, 8, 1, "0' 组'", v => { settings.VocabularyVisibleRows = (int)v; Save(); }));
+        panel.Children.Add(Toggle("随机轮换（关闭则按录入顺序）", settings.VocabularyRandom, v => { settings.VocabularyRandom = v; Save(); }));
+        panel.Children.Add(SliderRow("轮换间隔", settings.VocabularyIntervalSeconds, 5, 3600, 5, "0' 秒'", v => { settings.VocabularyIntervalSeconds = (int)v; Save(); }));
+        panel.Children.Add(Toggle("隐藏中文释义（包括悬停提示）", settings.VocabularyHideMeaning, v => { settings.VocabularyHideMeaning = v; Save(); }));
+        panel.Children.Add(Label("显示 1–8 组，按设置自动轮换，也可在单词区域滚轮切换；空词本不占空间。悬停组件可直接添加单词。", true));
+        panel.Children.Add(ActionButton("导入单词本", (_, _) => ImportVocabulary()));
+        panel.Children.Add(Label("CSV：单词,释义（含逗号的释义用双引号包围）；TSV / TXT：单词与释义用 Tab 分隔，也可每行只有单词。JSON：[{\"Word\":\"serene\",\"Meaning\":\"宁静的\"}]。文本建议 UTF-8，文件最多 4 MB。导入会跳过重复词，保留已有释义。", true));
         TextBox Input(string name, int limit) {
             var input = new TextBox { Padding = new(10), MaxLength = limit, Margin = new(0, 0, 0, 8), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
             System.Windows.Automation.AutomationProperties.SetName(input, name); HoverHints.Set(input, name); return input;
@@ -295,17 +302,27 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Label("单词")); var word = Input("新单词", 80); panel.Children.Add(word);
         panel.Children.Add(Label("释义 / 笔记")); var meaning = Input("新单词释义", 200); panel.Children.Add(meaning);
         void Add() {
-            var text = word.Text.Trim();
-            if (text.Length == 0) { status.Text = "请先输入单词"; return; }
-            if (settings.Vocabulary.Count >= 500) { status.Text = "最多保存 500 个单词"; return; }
-            if (settings.Vocabulary.Any(w => w.Word.Equals(text, StringComparison.OrdinalIgnoreCase))) { status.Text = "该单词已存在，可在下方编辑"; return; }
-            settings.Vocabulary.Add(new() { Word = text, Meaning = meaning.Text.Trim() });
+            if (!VocabularyImport.TryAdd(settings, word.Text, meaning.Text, out var message)) { status.Text = message; return; }
             word.Clear(); meaning.Clear(); Save(); BuildVocabularyList(); status.Text = "单词已保存"; word.Focus();
         }
         panel.Children.Add(ActionButton("添加单词", (_, _) => Add()));
         meaning.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Add(); e.Handled = true; } };
         panel.Children.Add(Label("下方可编辑单词与释义，移开焦点自动保存；关闭显示不会删除词条。数据仅保存在本机。", true));
         panel.Children.Add(vocabularyList); BuildVocabularyList(); return panel;
+    }
+    private void ImportVocabulary()
+    {
+        var dialog = new OpenFileDialog { Filter = "单词本|*.csv;*.tsv;*.txt;*.json", Title = "导入单词本" };
+        if (dialog.ShowDialog(this) != true) return;
+        try {
+            if (new FileInfo(dialog.FileName).Length > 4 * 1024 * 1024) throw new FormatException("文件最多 4 MB");
+            var entries = VocabularyImport.Parse(File.ReadAllText(dialog.FileName), Path.GetExtension(dialog.FileName));
+            int added = 0;
+            foreach (var entry in entries) if (VocabularyImport.TryAdd(settings, entry.Word, entry.Meaning ?? "", out _)) added++;
+            Save(); BuildVocabularyList(); status.Text = $"已导入 {added} 个，跳过重复、超长或超出容量的 {entries.Count - added} 个；最多保存 500 个";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or JsonException or Microsoft.VisualBasic.FileIO.MalformedLineException)
+        { status.Text = "导入失败：" + ex.Message; }
     }
     private void BuildVocabularyList()
     {

@@ -2,7 +2,7 @@ using Mizu.Core.Services;
 
 namespace Mizu.Core;
 
-public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, Todo, Vocabulary }
+public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, Todo, Vocabulary, Clock }
 public sealed record SectionLayout(WidgetSection Kind, double Top, double Height);
 public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
 {
@@ -10,6 +10,7 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
     {
         var rows = new List<SectionLayout>(); double y = 32;
         void Add(WidgetSection kind, double height) { if (height <= 0) return; if (rows.Count > 0) y += 16; rows.Add(new(kind, y, height)); y += height; }
+        if (s.ShowClock) Add(WidgetSection.Clock, 94);
         if (s.ShowWeather)
         {
             double h = s.WeatherCurrent || s.WeatherTodayRange ? (s.CompactMode ? 84 : 116) : 0;
@@ -22,7 +23,7 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         if (s.ShowNetwork) Add(WidgetSection.Network, 60 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 52 : 32));
         if (s.ShowMedia) Add(WidgetSection.Media, 104);
         if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);
-        if (s.ShowVocabulary && s.Vocabulary.Count > 0) Add(WidgetSection.Vocabulary, 76);
+        if (s.ShowVocabulary && s.Vocabulary.Count > 0) Add(WidgetSection.Vocabulary, Math.Min(s.Vocabulary.Count, s.VocabularyVisibleRows) * (s.VocabularyHideMeaning ? 46 : 76));
         if (s.ShowTodo)
         {
             var count = s.Todos.Count(t => !s.HideCompletedTodos || !t.Completed);
