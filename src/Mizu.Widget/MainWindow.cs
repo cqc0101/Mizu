@@ -14,6 +14,9 @@ public sealed class MainWindow : Window
 {
     public AppSettings Settings { get; }
     public event Action? SettingsApplied;
+    private static readonly DependencyProperty LayoutProgressProperty = DependencyProperty.Register("LayoutProgress", typeof(double), typeof(MainWindow), new PropertyMetadata(1.0, (d, _) => ((MainWindow)d).UpdateLayoutTransition()));
+    private WidgetLayout? layoutFrom, layoutTo, appliedLayout;
+    private bool layoutAnimating;
     public WidgetState State { get; }
     public WidgetSurface Surface { get; }
     public WidgetEngine Engine { get; }
@@ -111,7 +114,8 @@ public sealed class MainWindow : Window
         };
         displayTimer.Tick += (_, _) => {
             if (themeRotation.Update(Settings, DateTimeOffset.UtcNow, ThemePalette.All.Select(p => p.Id))) { ApplySettings(); SaveSettings(); }
-            if (IsVisible && (Settings.ShowClock || Settings.ShowVocabulary)) Surface.InvalidateVisual();
+            if (IsVisible && Settings.ShowDevices) OnStateChanged();
+            else if (IsVisible && (Settings.ShowClock || Settings.ShowVocabulary)) Surface.InvalidateVisual();
         };
         todoHideDelay.Tick += (_, _) => { todoHideDelay.Stop(); if (!IsMouseOver && todoEditor?.IsKeyboardFocusWithin != true) AnimateTodoFooter(false); };
         IsVisibleChanged += (_, _) => { if (!IsVisible) { todoHideDelay.Stop(); AnimateTodoFooter(false, false); } };
@@ -151,7 +155,37 @@ public sealed class MainWindow : Window
         var current = visible.Where(d => d.State == LinkState.Online).Select(d => d.Id).ToHashSet();
         var added = visible.FirstOrDefault(d => current.Contains(d.Id) && !onlineDevices.Contains(d.Id))?.Id; onlineDevices = current;
         if (added is not null) State.DevicePage = Math.Max(0, visible.ToList().FindIndex(d => d.Id == added) / 2);
+        var target = Surface.TargetLayout;
+        if (appliedLayout is not null && Math.Abs(appliedLayout.Height - target.Height) > .01)
+        {
+            var from = Surface.TransitionLayout ?? appliedLayout; ApplySettings();
+            if (Settings.SmoothResize && IsLoaded) StartLayoutTransition(from, target);
+        }
         Surface.InvalidateVisual(); UpdateMediaControls();
+    }
+    private void StartLayoutTransition(WidgetLayout from, WidgetLayout to)
+    {
+        layoutFrom = from; layoutTo = to; layoutAnimating = true;
+        Height = Math.Max(Height, (Math.Max(from.Height, to.Height) + FooterHeight) * widgetScale.ScaleY);
+        SetValue(LayoutProgressProperty, 0.0);
+        var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
+        animation.Completed += (_, _) => {
+            SetValue(LayoutProgressProperty, 1.0); BeginAnimation(LayoutProgressProperty, null);
+            Surface.TransitionLayout = null; layoutAnimating = false; UpdateTodoGeometry(); UpdateMediaControls();
+        };
+        BeginAnimation(LayoutProgressProperty, animation, HandoffBehavior.SnapshotAndReplace);
+    }
+    private void UpdateLayoutTransition()
+    {
+        if (!layoutAnimating || layoutFrom is null || layoutTo is null) return;
+        double p = (double)GetValue(LayoutProgressProperty);
+        Surface.TransitionLayout = new(layoutTo.Sections.Select(section => {
+            var old = layoutFrom.Sections.FirstOrDefault(s => s.Kind == section.Kind);
+            return section with { Top = (old?.Top ?? section.Top) * (1 - p) + section.Top * p, Height = (old?.Height ?? 0) * (1 - p) + section.Height * p };
+        }).ToArray(), layoutFrom.Height * (1 - p) + layoutTo.Height * p);
+        var todo = Surface.Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
+        if (todo is not null) todoHost.Margin = new(30, todo.Top, 0, 0);
+        UpdateTodoGeometry(); UpdateMediaControls();
     }
     private void AnimateTodoFooter(bool open, bool animate = true)
     {
@@ -175,7 +209,7 @@ public sealed class MainWindow : Window
         footerAnimating = true;
         // Reserve native bounds once; only the WPF surface, clip and editor
         // move each frame. A reversed gesture starts from the current value.
-        Height = Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + FooterHeight) * widgetScale.ScaleY);
+        Height = Math.Max(Height, (Surface.Layout.Height + FooterHeight) * widgetScale.ScaleY);
         var motion = new DoubleAnimation(from, target, TimeSpan.FromMilliseconds(open ? 260 : 220)) {
             EasingFunction = open ? new QuinticEase { EasingMode = EasingMode.EaseOut } : new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
@@ -184,7 +218,7 @@ public sealed class MainWindow : Window
     private void UpdateTodoGeometry()
     {
         if (layout is null || Surface is null) return;
-        var baseHeight = WidgetLayout.Calculate(Settings).Height;
+        var baseHeight = Surface.Layout.Height;
         var reveal = HasAddActions ? Math.Clamp(TodoReveal, 0, 1) : 0;
         var height = baseHeight + FooterHeight * reveal;
         layout.Height = Surface.Height = height; Surface.FooterHeight = FooterHeight; Surface.FooterReveal = reveal; Surface.InvalidateVisual();
@@ -194,7 +228,7 @@ public sealed class MainWindow : Window
         todoEditorHost.Opacity = Math.Clamp((reveal - .12) / .88, 0, 1);
         todoEditorHost.RenderTransform = new TranslateTransform(0, 8 * (1 - reveal));
         todoEditorHost.IsHitTestVisible = !Settings.PanelLocked && footerWanted && reveal > .85;
-        if (!footerAnimating && !editorAnimating && !widgetScale.HasAnimatedProperties) { Width = 356 * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
+        if (!footerAnimating && !editorAnimating && !layoutAnimating && !widgetScale.HasAnimatedProperties) { Width = 356 * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
     }
     private bool IsInteractive(DependencyObject source)
     {
@@ -263,10 +297,11 @@ public sealed class MainWindow : Window
         });
     public void ApplySettings()
     {
+        layoutAnimating = false; BeginAnimation(LayoutProgressProperty, null); Surface.TransitionLayout = null;
         SettingsApplied?.Invoke();
         HoverHints.SetPalette(this, ThemePalette.Get(Settings.Theme));
         HoverHints.SetIsDark(this, ThemePalette.Get(Settings.Theme).Dark);
-        var calculated = WidgetLayout.Calculate(Settings);
+        var calculated = Surface.TargetLayout; appliedLayout = calculated;
         var heightChanged = Math.Abs(layout.Height - calculated.Height) > .01;
         Topmost = Settings.AlwaysOnTop;
         layout.Height = Surface.Height = calculated.Height;
@@ -321,7 +356,7 @@ public sealed class MainWindow : Window
             widgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null); widgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             layout.CacheMode = null;
             UpdateTodoGeometry();
-            Width = width; Height = footerAnimating || editorAnimating ? Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + FooterHeight) * target) : layout.Height * target;
+            Width = width; Height = footerAnimating || editorAnimating ? Math.Max(Height, (Surface.Layout.Height + FooterHeight) * target) : layout.Height * target;
             if (IsLoaded && Top < SystemParameters.WorkArea.Bottom && Top + height > SystemParameters.WorkArea.Bottom)
                 Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - height - 12);
         }
@@ -340,9 +375,10 @@ public sealed class MainWindow : Window
     }
     private void UpdateMediaControls()
     {
-        var area = WidgetLayout.Calculate(Settings).Sections.FirstOrDefault(s => s.Kind == WidgetSection.Media);
+        var area = Surface.Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Media);
         var m = State.Media;
-        var key = $"{area}|{m.Playing}|{m.Previous}|{m.Toggle}|{m.Next}|{Settings.Theme}";
+        if (area is not null) mediaHost.Margin = new(113, area.Top + 62, 0, 0);
+        var key = $"{area?.Height}|{m.Playing}|{m.Previous}|{m.Toggle}|{m.Next}|{Settings.Theme}";
         if (key == mediaKey) return; mediaKey = key;
         HoverHints.CloseTree(mediaHost); mediaHost.Children.Clear();
         mediaHost.Visibility = area is null ? Visibility.Collapsed : Visibility.Visible;
@@ -399,7 +435,7 @@ public sealed class MainWindow : Window
         void Finish() { EditorExpansion = target; BeginAnimation(EditorExpansionProperty, null); editorAnimating = false; UpdateTodoGeometry(); }
         if (!IsLoaded || !Settings.SmoothResize || TodoReveal < .001) { Finish(); return; }
         editorAnimating = true;
-        Height = Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + 82) * widgetScale.ScaleY);
+        Height = Math.Max(Height, (Surface.Layout.Height + 82) * widgetScale.ScaleY);
         var animation = new DoubleAnimation(EditorExpansion, target, TimeSpan.FromMilliseconds(220)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
         animation.Completed += (_, _) => Finish(); BeginAnimation(EditorExpansionProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }

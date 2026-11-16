@@ -340,12 +340,12 @@ public sealed class SettingsWindow : Window
     {
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
         panel.Children.Add(Toggle("在组件上显示单词本", settings.ShowVocabulary, v => { settings.ShowVocabulary = v; Save(); }));
-        panel.Children.Add(SliderRow("显示组数", settings.VocabularyVisibleRows, 1, 8, 1, "0' 组'", v => { settings.VocabularyVisibleRows = (int)v; Save(); }));
+        panel.Children.Add(SliderRow("显示组数", settings.VocabularyVisibleRows, 1, 12, 1, "0' 组'", v => { settings.VocabularyVisibleRows = (int)v; Save(); }));
         panel.Children.Add(SliderRow("单词间距", settings.VocabularySpacing, 0, 40, 1, "0' px'", v => { settings.VocabularySpacing = (int)v; Save(); }));
         panel.Children.Add(Toggle("随机轮换（关闭则按录入顺序）", settings.VocabularyRandom, v => { settings.VocabularyRandom = v; Save(); }));
         panel.Children.Add(SliderRow("轮换间隔", settings.VocabularyMinutes, 1, 720, 1, "0' 分钟'", v => { settings.VocabularyIntervalMinutes = (int)v; Save(); }));
         panel.Children.Add(Toggle("隐藏中文释义（包括悬停提示）", settings.VocabularyHideMeaning, v => { settings.VocabularyHideMeaning = v; Save(); }));
-        panel.Children.Add(Label("显示 1–8 组，按设置自动轮换，也可在单词区域滚轮切换；空词本不占空间。悬停组件可直接添加单词。", true));
+        panel.Children.Add(Label("显示 1–12 组，按设置自动轮换，也可在单词区域滚轮切换；空词本不占空间。悬停组件可直接添加单词。", true));
         panel.Children.Add(ActionButton("导入单词本", (_, _) => ImportVocabulary()));
         panel.Children.Add(Label("CSV：单词,释义（含逗号的释义用双引号包围）；TSV / TXT：单词与释义用 Tab 分隔，也可每行只有单词。JSON：[{\"Word\":\"serene\",\"Meaning\":\"宁静的\"}]。文本建议 UTF-8，文件最多 4 MB。导入会跳过重复词，保留已有释义。", true));
         TextBox Input(string name, int limit) {
@@ -442,7 +442,7 @@ public sealed class SettingsWindow : Window
         var panel = new StackPanel { Margin = new(1, 8, 12, 0) };
         panel.Children.Add(Label("自动检测连接方式与设备类型。识别有误时可手动调整。", true));
         panel.Children.Add(Toggle("仅显示活跃外设", settings.HideInactiveDevices, v => { settings.HideInactiveDevices = v; Save(); }));
-        panel.Children.Add(Label("开启后，面板仅保留已确认在线的设备；离线或连接状态未知的设备仍可在本页查看。", true));
+        panel.Children.Add(Label("外设休眠后保留显示：15 分钟无有效信号变灰，1 小时后隐藏，收到新信号后恢复。开启筛选可合并同一外设的通道；本页保留完整检测列表。", true));
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         actions.Children.Add(ActionButton("重新检测", async (_, _) => { status.Text = "检测中…"; await widget.Engine.RefreshDevicesAsync(); BuildDevices(); status.Text = "检测完成"; }));
         actions.Children.Add(ActionButton("导出诊断", (_, _) =>

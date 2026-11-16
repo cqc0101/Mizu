@@ -50,6 +50,15 @@ Check(pixels[((h/2)*w+w/2)*4+3]>0,"Material present");
 }
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
+var rowDevice=new Peripheral("row-mouse","Mouse A9",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,70,false,"test",DateTimeOffset.UtcNow);
+var rowState=new WidgetState {Devices=[rowDevice]};
+var rowWindow=new MainWindow(new AppSettings {ShowWeather=false,ShowCpu=false,ShowMemory=false,ShowTemperature=false,HideInactiveDevices=true},rowState,preview:true,persistSettings:false);
+rowWindow.Show();rowWindow.UpdateLayout();var oneDeviceHeight=rowWindow.VisualContent.Height;
+Check(rowWindow.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Devices).Height==78,"A single visible device does not leave a second row blank");
+rowState.Devices=[rowDevice,rowDevice with {Id="row-keyboard",Name="Keyboard K98M",Kind=PeripheralKind.Keyboard}];
+typeof(MainWindow).GetMethod("OnStateChanged",BindingFlags.NonPublic|BindingFlags.Instance,null,Type.EmptyTypes,null)!.Invoke(rowWindow,[]);Pump(70);
+Check(rowWindow.VisualContent.Height>oneDeviceHeight && rowWindow.VisualContent.Height<oneDeviceHeight+78,"Device arrival has intermediate layout positions");
+Pump(320);Check(Math.Abs(rowWindow.VisualContent.Height-oneDeviceHeight-78)<.1,"Keyboard arrival settles at exactly two device rows");rowWindow.Hide();
 var main=new MainWindow(settingsLive,WidgetState.Preview(),preview:true,persistSettings:false);main.Show();main.UpdateLayout();
 var nativeType=typeof(MainWindow).Assembly.GetType("Mizu.Widget.NativeWindow")!;
 var readBounds=nativeType.GetMethod("GetWindowRect",BindingFlags.NonPublic|BindingFlags.Static)!;
@@ -223,7 +232,7 @@ main.Settings.ShowTodo=false;main.ApplySettings();
 Check(!Desc<Button>(main).Any(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="添加事件"),"Disabled todo feature removes its hover action");
 main.Settings.ShowClock=false;main.Settings.ShowVocabulary = false; main.Settings.ShowTodo = true; main.Settings.Todos.Clear(); main.ApplySettings(); main.UpdateLayout();
 Keyboard.ClearFocus();typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[false]);Pump(500);
-main.Settings.HideInactiveDevices=true;Check(main.Surface.VisibleDevices.All(d=>d.State==LinkState.Online),"Inactive-device filter hides offline and unknown devices");main.Settings.HideInactiveDevices=false;
+main.Settings.HideInactiveDevices=true;Check(main.Surface.VisibleDevices.All(d=>d.DisplayDimmed.HasValue),"Channel filtering retains the timed sleep display policy");main.Settings.HideInactiveDevices=false;
 tabs.SelectedIndex=1;dialog.UpdateLayout();
 typeof(SettingsWindow).GetMethod("MoveSection",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,new object[]{WidgetSection.Vocabulary,WidgetSection.Weather,false});
 Check(main.Settings.SectionOrder.IndexOf(WidgetSection.Vocabulary)<main.Settings.SectionOrder.IndexOf(WidgetSection.Weather),"Reordering settings updates the persisted module order");

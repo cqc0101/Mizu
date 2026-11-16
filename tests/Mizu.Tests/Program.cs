@@ -10,6 +10,19 @@ try {
 var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
+var graceDevice=new Peripheral("sleep-mouse","Sleep Mouse A9",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,80,false,"test",now);
+var presence=new PeripheralPresence();Check(presence.Update([graceDevice],now).Single().DisplayDimmed==false,"New device is visible at normal brightness");
+Check(presence.Update([graceDevice with {State=LinkState.Offline}],now.AddMinutes(14)).Single().DisplayDimmed==false,"Sleeping device retains normal display before fifteen minutes");
+Check(presence.Update([],now.AddMinutes(15)).Single().DisplayDimmed==true,"Absent device becomes gray at fifteen minutes");
+Check(presence.Update([],now.AddMinutes(59)).Count==1 && presence.Update([],now.AddHours(1)).Count==0,"Device remains until one hour then disappears");
+Check(presence.Update([graceDevice],now.AddMinutes(61)).Count==0,"Repeated stale online data cannot renew the grace period");
+Check(presence.Update([graceDevice with {ObservedAt=now.AddMinutes(62)}],now.AddMinutes(62)).Single().DisplayDimmed==false,"New signal restores a hidden device");
+var signalOnly=new PeripheralPresence();signalOnly.Update([graceDevice with {ObservedAt=null}],now);Check(signalOnly.Update([graceDevice with {ObservedAt=null}],now.AddHours(1)).Count==0,"Timestamp-free repeated records do not renew indefinitely");
+signalOnly.Update([graceDevice with {State=LinkState.Offline,ObservedAt=null}],now.AddMinutes(61));Check(signalOnly.Update([graceDevice with {ObservedAt=null}],now.AddMinutes(62)).Count==1,"A new connected transition restores timestamp-free devices");
+var deviceLayoutSettings=new AppSettings();Check(WidgetLayout.Calculate(deviceLayoutSettings,1).Sections.Single(s=>s.Kind==WidgetSection.Devices).Height==78,"One device uses exactly one row");
+var twelveWords=new AppSettings {ShowVocabulary=true,VocabularyVisibleRows=12,Vocabulary=Enumerable.Range(0,12).Select(i=>new VocabularyEntry {Word="word"+i}).ToList()};twelveWords.Validate();var twelveRotation=new VocabularyRotation();twelveRotation.Update(twelveWords,now);
+Check(twelveRotation.Visible.Count==12 && WidgetLayout.Calculate(twelveWords).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==12*66,"All twelve requested word groups are selected and given space");
+Check(!WidgetLayout.Calculate(deviceLayoutSettings,0).Sections.Any(s=>s.Kind==WidgetSection.Devices),"Zero devices reserve no section");
 var themeSettings=new AppSettings {RandomThemeEnabled=true,ThemeIntervalMinutes=1,Theme="light"};var themeRotation=new ThemeRotation();
 Check(!themeRotation.Update(themeSettings,now,new[]{"light","dark"}) && !themeRotation.Update(themeSettings,now.AddSeconds(59),new[]{"light","dark"}),"Theme stays stable before its minute deadline");
 Check(themeRotation.Update(themeSettings,now.AddMinutes(1),new[]{"light","dark"}) && themeSettings.Theme=="dark","Random theme changes at deadline and excludes current color");
@@ -41,7 +54,7 @@ Check(uniqueGroups,"Random groups contain the requested number of distinct words
 rotationSettings.VocabularyHideMeaning=true;var wordArea=WidgetLayout.Calculate(rotationSettings).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
 Check(wordArea.Height==84,"Hidden meanings release unused row height");
 rotationSettings.ShowClock=true;Check(WidgetLayout.Calculate(rotationSettings).Sections[0].Kind==WidgetSection.Clock,"Clock appears before weather");
-rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();Check(rotationSettings.VocabularyVisibleRows==8 && rotationSettings.VocabularyIntervalSeconds==60,"Invalid rotation settings are bounded");
+rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();Check(rotationSettings.VocabularyVisibleRows==12 && rotationSettings.VocabularyIntervalSeconds==60,"Invalid rotation settings are bounded");
 var q = HidppProtocol.Request(1, 7, 1, 10);
 byte[] reply = new byte[20];
 new byte[] { 0x11, 1, 7, 0x1a, 82, 8, 0 }.CopyTo(reply, 0);

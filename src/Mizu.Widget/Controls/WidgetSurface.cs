@@ -13,7 +13,10 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     public double FooterReveal { get => (double)GetValue(FooterRevealProperty); set => SetValue(FooterRevealProperty, value); }
     public double FooterHeight { get; set; } = 44;
     public bool PreviewMaterial { get; set; }
-    public WidgetLayout Layout => WidgetLayout.Calculate(settings);
+    public WidgetLayout TargetLayout => WidgetLayout.Calculate(settings, VisibleDevices.Count);
+    public WidgetLayout? TransitionLayout { get; set; }
+    public WidgetLayout Layout => TransitionLayout ?? TargetLayout;
+    private readonly PeripheralPresence presence = new();
     private readonly DevicePager pager = new();
     private readonly VocabularyRotation vocabulary = new();
     private int wordWheel;
@@ -23,8 +26,8 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     {
         get
         {
-            var candidates = state.Devices.Where(d => !settings.HiddenDevices.Contains(d.Id)).ToArray();
-            var active = settings.HideInactiveDevices ? ActivePeripheralFilter.Select(candidates) : candidates;
+            var candidates = presence.Update(state.Devices, DateTimeOffset.UtcNow).Where(d => !settings.HiddenDevices.Contains(d.Id)).ToArray();
+            var active = settings.HideInactiveDevices ? ActivePeripheralFilter.Select(candidates, requireOnline: false) : candidates;
             var visible = active.Select(d => d with
     { Name = settings.NameOverrides.GetValueOrDefault(d.Id, d.Name), Kind = settings.TypeOverrides.GetValueOrDefault(d.Id, d.Kind) })
                 .OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.ObservedAt.HasValue).ThenBy(d => d.Kind).ToArray();
@@ -93,7 +96,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                         new Typeface("Segoe UI, Microsoft YaHei UI"), 15 * settings.TextScale, foreground, Dpi);
                     var size = Math.Max(11, Math.Min(15, 15 * 294 / Math.Max(1, measure.WidthIncludingTrailingWhitespace)));
                     Text(d, quote, 31, section.Top + 4, size, state.PoetryFailed ? secondary : foreground, Dpi, width: 294);
-                    var credit = state.Poetry is { } source ? $"— {source.DynastyMark} · 《{source.Origin}》" : "—";
+                    var credit = state.Poetry is { } source ? $"— {source.DynastyMark} · {source.Author} · 《{source.Origin}》" : "—";
                     Art.Text(d, credit, 31, section.Top + 38, 11 * settings.TextScale, secondary, Dpi, width: 294,
                         weight: settings.TextWeight, alignment: TextAlignment.Right);
                     break;
@@ -189,14 +192,16 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     }
     private void DrawDevices(DrawingContext d, double top)
     {
+        var area = Layout.Sections.First(s => s.Kind == WidgetSection.Devices);
+        d.PushClip(new RectangleGeometry(new Rect(0, top, 356, area.Height)));
         var devices = VisibleDevices; var pages = Math.Max(1, (int)Math.Ceiling(devices.Count / 2.0));
         state.DevicePage = Math.Clamp(state.DevicePage, 0, pages - 1);
         var current = devices.Skip(state.DevicePage * 2).Take(2).ToArray();
-        for (int row = 0; row < (settings.HideInactiveDevices ? current.Length : 2); row++)
+        for (int row = 0; row < current.Length; row++)
         {
             double y = top + row * (settings.CompactMode ? 56 : 78);
             var peripheral = row < current.Length ? current[row] : null;
-            var online = peripheral?.State == LinkState.Online; var deviceLine = online ? secondary : quiet;
+            var online = peripheral is not null && !(peripheral.DisplayDimmed ?? peripheral.State != LinkState.Online); var deviceLine = online ? secondary : quiet;
             var fill = Art.Brush(Dark ? "#0AFFFFFF" : "#18FFFFFF");
             var kind = peripheral?.Kind ?? (row == 0 ? PeripheralKind.Keyboard : PeripheralKind.Mouse);
             d.PushTransform(new TranslateTransform(30, y + 12));
@@ -220,6 +225,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         }
         if (pages > 1) for (var i = 0; i < Math.Min(pages, 10); i++)
             d.DrawEllipse(i == state.DevicePage ? secondary : line, null, new(178 + (i - (Math.Min(pages, 10) - 1) / 2.0) * 8, top + (settings.CompactMode ? 110 : 151)), 1.6, 1.6);
+        d.Pop();
     }
     private (string Icon, double? Value, string Tip)[] Metrics => new[] {
         ("cpu", state.System.CpuPercent, "CPU 总负载 · 最近 80 秒", settings.ShowCpu),
@@ -286,7 +292,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             {
                 var device = devices[index];
                 var connection = device.Link switch { LinkKind.Bluetooth => "蓝牙", LinkKind.Receiver => "无线接收器", LinkKind.NearLink => "星闪", LinkKind.Wired => "有线", _ => "连接待确认" };
-                var stateText = device.State switch { LinkState.Online => "已连接", LinkState.Offline => "未连接 · 上次读数", _ => "状态待确认" };
+                var stateText = device.DisplayDimmed == true ? "15 分钟无新信号 · 上次读数" : device.State == LinkState.Online ? "已连接" : "休眠宽限 · 上次读数";
                 tip = $"{device.Name}\n{connection} · {stateText}";
             }
             else tip = "打开设置查看外设检测";

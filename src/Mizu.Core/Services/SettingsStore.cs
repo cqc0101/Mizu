@@ -90,7 +90,7 @@ public sealed class AppSettings
         GlassOpacity = double.IsFinite(GlassOpacity) ? Math.Clamp(GlassOpacity, .15, .95) : .62;
         CornerRadius = double.IsFinite(CornerRadius) ? Math.Clamp(CornerRadius, 0, 64) : 30;
         PoetryLines = 1; // Kept only for compatibility with earlier settings files.
-        VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, 8);
+        VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, 12);
         VocabularySpacing = Math.Clamp(VocabularySpacing, 0, 40);
         SectionOrder = (SectionOrder ?? []).Where(s => Enum.IsDefined(s)).Distinct().Concat(new AppSettings().SectionOrder).Distinct().ToList();
         VocabularyIntervalMinutes = VocabularyMinutes;

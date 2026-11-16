@@ -15,6 +15,7 @@ public sealed record Peripheral(
     string? ContainerId = null, string? Detail = null)
 {
     [JsonIgnore] public string? BluetoothAddress { get; init; }
+    [JsonIgnore] public bool? DisplayDimmed { get; init; }
     public bool IsFresh(DateTimeOffset now) => ObservedAt is { } at && now >= at && now - at < TimeSpan.FromMinutes(3);
 }
 
