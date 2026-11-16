@@ -31,6 +31,10 @@ public sealed class MainWindow : Window
     public static readonly DependencyProperty TodoRevealProperty = DependencyProperty.Register(nameof(TodoReveal), typeof(double), typeof(MainWindow),
         new PropertyMetadata(0.0, (d, _) => ((MainWindow)d).UpdateTodoGeometry()));
     public double TodoReveal { get => (double)GetValue(TodoRevealProperty); private set => SetValue(TodoRevealProperty, value); }
+    private static readonly DependencyProperty EditorExpansionProperty = DependencyProperty.Register("EditorExpansion", typeof(double), typeof(MainWindow), new PropertyMetadata(0.0, (d, _) => ((MainWindow)d).UpdateTodoGeometry()));
+    private double EditorExpansion { get => (double)GetValue(EditorExpansionProperty); set => SetValue(EditorExpansionProperty, value); }
+    private bool editorAnimating;
+    private double FooterHeight => 44 + 38 * EditorExpansion;
     private readonly ScaleTransform widgetScale = new(1, 1);
     private int resizeGeneration;
     private bool settingsPreviewQueued, fullPreviewNeeded;
@@ -166,7 +170,7 @@ public sealed class MainWindow : Window
         footerAnimating = true;
         // Reserve native bounds once; only the WPF surface, clip and editor
         // move each frame. A reversed gesture starts from the current value.
-        Height = Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + 44) * widgetScale.ScaleY);
+        Height = Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + FooterHeight) * widgetScale.ScaleY);
         var motion = new DoubleAnimation(from, target, TimeSpan.FromMilliseconds(open ? 260 : 220)) {
             EasingFunction = open ? new QuinticEase { EasingMode = EasingMode.EaseOut } : new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
@@ -177,14 +181,15 @@ public sealed class MainWindow : Window
         if (layout is null || Surface is null) return;
         var baseHeight = WidgetLayout.Calculate(Settings).Height;
         var reveal = HasAddActions ? Math.Clamp(TodoReveal, 0, 1) : 0;
-        var height = baseHeight + 44 * reveal;
-        layout.Height = Surface.Height = height; Surface.FooterReveal = reveal;
+        var height = baseHeight + FooterHeight * reveal;
+        layout.Height = Surface.Height = height; Surface.FooterHeight = FooterHeight; Surface.FooterReveal = reveal; Surface.InvalidateVisual();
+        todoEditorHost.Height = 30 + 38 * EditorExpansion; todoEditorHost.ClipToBounds = true;
         layout.Clip = new RectangleGeometry(new Rect(0, 0, 356, height), Settings.CornerRadius, Settings.CornerRadius);
         todoEditorHost.Margin = new(30, baseHeight - 4, 0, 0);
         todoEditorHost.Opacity = Math.Clamp((reveal - .12) / .88, 0, 1);
         todoEditorHost.RenderTransform = new TranslateTransform(0, 8 * (1 - reveal));
         todoEditorHost.IsHitTestVisible = !Settings.PanelLocked && footerWanted && reveal > .85;
-        if (!footerAnimating && !widgetScale.HasAnimatedProperties) { Width = 356 * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
+        if (!footerAnimating && !editorAnimating && !widgetScale.HasAnimatedProperties) { Width = 356 * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
     }
     private bool IsInteractive(DependencyObject source)
     {
@@ -300,7 +305,7 @@ public sealed class MainWindow : Window
     }
     private void ResizeWidget(bool animate)
     {
-        double target = Math.Min(Settings.Scale, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 44 : 0))));
+        double target = Math.Min(Settings.Scale, Math.Max(.25, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 82 : 0))));
         double start = widgetScale.ScaleX; int generation = ++resizeGeneration;
         double width = 356 * target, height = layout.Height * target;
         void Finish()
@@ -309,14 +314,14 @@ public sealed class MainWindow : Window
             widgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null); widgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             widgetScale.ScaleX = widgetScale.ScaleY = target; layout.CacheMode = null;
             UpdateTodoGeometry();
-            Width = width; Height = footerAnimating ? Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + 44) * target) : layout.Height * target;
+            Width = width; Height = footerAnimating || editorAnimating ? Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + FooterHeight) * target) : layout.Height * target;
             if (IsLoaded && Top < SystemParameters.WorkArea.Bottom && Top + height > SystemParameters.WorkArea.Bottom)
                 Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - height - 12);
         }
         if (!animate || !IsLoaded || !Settings.SmoothResize || Math.Abs(start - target) < .0001) { Finish(); return; }
         // Resize the transparent HWND once to hold both sizes. Animate only the
         // content transform, then shrink the bounds and restore vector rendering.
-        double reserveScale = Math.Min(1.5, Math.Max(.3, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 44 : 0))));
+        double reserveScale = Math.Min(1.5, Math.Max(.25, (SystemParameters.WorkArea.Height - 40) / (WidgetLayout.Calculate(Settings).Height + (HasAddActions ? 82 : 0))));
         Width = Math.Max(Width, 356 * reserveScale); Height = Math.Max(Height, layout.Height * reserveScale);
         layout.CacheMode ??= new BitmapCache(1.5);
         var motion = new DoubleAnimation(start, target, TimeSpan.FromMilliseconds(150))
@@ -380,14 +385,26 @@ public sealed class MainWindow : Window
         if (area is not null) todoHost.Children.Add(new ScrollViewer { Content = rows, Height = area.Height, VerticalAlignment = VerticalAlignment.Top, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         BuildAddEditor();
     }
+    private void AnimateEditor(bool expanded)
+    {
+        double target = expanded ? 1 : 0;
+        if (Math.Abs(EditorExpansion - target) < .001 && !editorAnimating) return;
+        void Finish() { EditorExpansion = target; BeginAnimation(EditorExpansionProperty, null); editorAnimating = false; UpdateTodoGeometry(); }
+        if (!IsLoaded || !Settings.SmoothResize || TodoReveal < .001) { Finish(); return; }
+        editorAnimating = true;
+        Height = Math.Max(Height, (WidgetLayout.Calculate(Settings).Height + 82) * widgetScale.ScaleY);
+        var animation = new DoubleAnimation(EditorExpansion, target, TimeSpan.FromMilliseconds(220)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        animation.Completed += (_, _) => Finish(); BeginAnimation(EditorExpansionProperty, animation, HandoffBehavior.SnapshotAndReplace);
+    }
     private void BuildAddEditor()
     {
         HoverHints.CloseTree(todoEditorHost); todoEditorHost.Children.Clear();
         var palette = ThemePalette.Get(Settings.Theme); var dark = palette.Dark;
         if (footerMode == "todo" && !Settings.ShowTodo || footerMode == "word" && !Settings.ShowVocabulary) footerMode = "";
         if (footerMode == "" && Settings.ShowTodo && !Settings.ShowVocabulary) footerMode = "todo";
+        AnimateEditor(footerMode == "word");
         var content = new Grid();
-        todoEditor = new Border { Child = content, Height = 30, CornerRadius = new(8), Background = Art.Brush(dark ? "#12FFFFFF" : "#408D9C83") };
+        todoEditor = new Border { Child = content, Height = footerMode == "word" ? 68 : 30, VerticalAlignment = VerticalAlignment.Top, CornerRadius = new(8), Background = Art.Brush(dark ? "#12FFFFFF" : "#408D9C83") };
         todoEditorHost.Children.Add(todoEditor);
         if (footerMode == "") {
             var actions = new System.Windows.Controls.Primitives.UniformGrid { Rows = 1 };
@@ -403,24 +420,28 @@ public sealed class MainWindow : Window
         var back = IconButton("close", "返回添加选项", () => { footerMode = ""; BuildAddEditor(); }); content.Children.Add(back);
         var editor = new Grid(); Grid.SetColumn(editor, 1); content.Children.Add(editor);
         if (footerMode == "word") {
-            editor.ColumnDefinitions.Add(new()); editor.ColumnDefinitions.Add(new()); editor.ColumnDefinitions.Add(new() { Width = new(30) });
-            TextBox Field(string placeholder, int limit, int column) {
+            editor.ColumnDefinitions.Add(new()); editor.ColumnDefinitions.Add(new() { Width = new(30) });
+            editor.RowDefinitions.Add(new() { Height = new(30) }); editor.RowDefinitions.Add(new() { Height = new(8) }); editor.RowDefinitions.Add(new() { Height = new(30) });
+            TextBox Field(string placeholder, int limit, int row) {
                 var box = new TextBox { MaxLength = limit, Padding = new(4), Background = Brushes.Transparent, BorderThickness = new(0), Foreground = Art.Brush(palette.Text), CaretBrush = Art.Brush(palette.Accent), FontSize = 12 * Settings.TextScale };
                 System.Windows.Automation.AutomationProperties.SetName(box, placeholder); HoverHints.Set(box, placeholder);
                 var hint = new TextBlock { Text = placeholder, Margin = new(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = Art.Brush(palette.Secondary), FontSize = 11 * Settings.TextScale, IsHitTestVisible = false };
-                var cell = new Grid(); cell.Children.Add(box); cell.Children.Add(hint); Grid.SetColumn(cell, column); editor.Children.Add(cell);
+                var cell = new Grid(); cell.Children.Add(box); cell.Children.Add(hint); Grid.SetRow(cell, row); editor.Children.Add(cell);
                 box.TextChanged += (_, _) => hint.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
                 box.GotKeyboardFocus += (_, _) => { todoHideDelay.Stop(); AnimateTodoFooter(true); };
                 box.LostKeyboardFocus += (_, _) => { if (!IsMouseOver) SetHover(false); };
                 return box;
             }
-            var word = Field("单词", 80, 0); var meaning = Field("释义", 200, 1);
+            var word = Field("单词", 80, 0); var meaning = Field("注释", 200, 2);
+            word.KeyDown += (_, e) => { if (e.Key == Key.Enter) { meaning.Focus(); e.Handled = true; } };
             void AddWord() {
                 if (!VocabularyImport.TryAdd(Settings, word.Text, meaning.Text, out var result)) { HoverHints.Set(word, result); return; }
                 word.Clear(); meaning.Clear(); ApplySettings(); SaveSettings();
+                Dispatcher.BeginInvoke(new Action(() => { if (word.IsVisible && !Settings.PanelLocked) word.Focus(); }));
             }
-            var addWord = IconButton("plus", "保存单词", AddWord); Grid.SetColumn(addWord, 2); editor.Children.Add(addWord);
+            var addWord = IconButton("plus", "保存单词", AddWord); Grid.SetColumn(addWord, 1); Grid.SetRow(addWord, 2); editor.Children.Add(addWord);
             meaning.KeyDown += (_, e) => { if (e.Key == Key.Enter) { AddWord(); e.Handled = true; } };
+            Dispatcher.BeginInvoke(new Action(() => { if (word.IsVisible && !Settings.PanelLocked) word.Focus(); }));
             return;
         }
         var input = new TextBox { Background = Brushes.Transparent, BorderThickness = new(0), Foreground = Art.Brush(palette.Text), CaretBrush = Art.Brush(palette.Accent), FontSize = 12 * Settings.TextScale, FontWeight = FontWeight.FromOpenTypeWeight(Settings.TextWeight), Padding = new(5), MaxLength = 160, ToolTip = "输入待办，按 Enter 添加" };

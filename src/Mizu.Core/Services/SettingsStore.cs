@@ -37,6 +37,9 @@ public sealed class AppSettings
     public bool VocabularyRandom { get; set; }
     public int VocabularyIntervalSeconds { get; set; } = 30;
     public bool VocabularyHideMeaning { get; set; }
+    public int VocabularySpacing { get; set; } = 8;
+    public bool HideInactiveDevices { get; set; }
+    public List<WidgetSection> SectionOrder { get; set; } = [WidgetSection.Clock, WidgetSection.Weather, WidgetSection.Devices, WidgetSection.Metrics, WidgetSection.Network, WidgetSection.Media, WidgetSection.Poetry, WidgetSection.Vocabulary, WidgetSection.Todo];
     public List<VocabularyEntry> Vocabulary { get; set; } = [];
     public bool ShowGraphs { get; set; } = true;
     public bool ShowConnectionIcons { get; set; } = true;
@@ -77,13 +80,15 @@ public sealed class AppSettings
         if (!System.Net.IPAddress.TryParse(NetworkProbeTarget, out var probe) || probe.Equals(System.Net.IPAddress.Any) || probe.Equals(System.Net.IPAddress.IPv6Any)) NetworkProbeTarget = "1.1.1.1";
         NetworkProbeTargets = (NetworkProbeTargets ?? new List<string> { NetworkProbeTarget }).Select(NetworkService.NormalizeTarget).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToList();
         if (NetworkProbeTargets.Count > 0) NetworkProbeTarget = NetworkProbeTargets[0];
-        Scale = double.IsFinite(Scale) ? Math.Clamp(Scale, .75, 1.5) : 1;
+        Scale = double.IsFinite(Scale) ? Math.Clamp(Scale, .4, 1.5) : 1;
         TextScale = double.IsFinite(TextScale) ? Math.Clamp(TextScale, .85, 1.25) : 1;
         TextWeight = Math.Clamp(TextWeight, 300, 700);
         GlassOpacity = double.IsFinite(GlassOpacity) ? Math.Clamp(GlassOpacity, .15, .95) : .62;
         CornerRadius = double.IsFinite(CornerRadius) ? Math.Clamp(CornerRadius, 0, 64) : 30;
         PoetryLines = 1; // Kept only for compatibility with earlier settings files.
         VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, 8);
+        VocabularySpacing = Math.Clamp(VocabularySpacing, 0, 40);
+        SectionOrder = (SectionOrder ?? []).Where(s => Enum.IsDefined(s)).Distinct().Concat(new AppSettings().SectionOrder).Distinct().ToList();
         VocabularyIntervalSeconds = Math.Clamp(VocabularyIntervalSeconds, 5, 3600);
         Vocabulary = (Vocabulary ?? []).Where(w => w is not null && !string.IsNullOrWhiteSpace(w.Word)).Take(500).ToList();
         foreach (var entry in Vocabulary)

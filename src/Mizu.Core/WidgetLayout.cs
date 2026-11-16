@@ -6,6 +6,7 @@ public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, T
 public sealed record SectionLayout(WidgetSection Kind, double Top, double Height);
 public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
 {
+    public static double VocabularyRowHeight(AppSettings s) => (s.VocabularyHideMeaning ? 34 : 58) + s.VocabularySpacing;
     public static WidgetLayout Calculate(AppSettings s)
     {
         var rows = new List<SectionLayout>(); double y = 32;
@@ -23,12 +24,16 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         if (s.ShowNetwork) Add(WidgetSection.Network, 60 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 52 : 32));
         if (s.ShowMedia) Add(WidgetSection.Media, 104);
         if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);
-        if (s.ShowVocabulary && s.Vocabulary.Count > 0) Add(WidgetSection.Vocabulary, Math.Min(s.Vocabulary.Count, s.VocabularyVisibleRows) * (s.VocabularyHideMeaning ? 46 : 76));
+        if (s.ShowVocabulary && s.Vocabulary.Count > 0) Add(WidgetSection.Vocabulary, Math.Min(s.Vocabulary.Count, s.VocabularyVisibleRows) * VocabularyRowHeight(s));
         if (s.ShowTodo)
         {
             var count = s.Todos.Count(t => !s.HideCompletedTodos || !t.Completed);
             if (count > 0) Add(WidgetSection.Todo, Math.Min(count, s.TodoVisibleRows) * 32);
         }
-        return new(rows.ToArray(), Math.Max(104, y + 20));
+        var order = s.SectionOrder;
+        var sorted = rows.OrderBy(row => { var index = order.IndexOf(row.Kind); return index < 0 ? int.MaxValue : index; }).ToArray();
+        y = 32;
+        for (int i = 0; i < sorted.Length; i++) { if (i > 0) y += 16; sorted[i] = sorted[i] with { Top = y }; y += sorted[i].Height; }
+        return new(sorted, Math.Max(104, y + 20));
     }
 }

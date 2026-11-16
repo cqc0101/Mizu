@@ -21,6 +21,9 @@ public sealed class SettingsWindow : Window
     private readonly StackPanel deviceList = new();
     private readonly StackPanel todoList = new();
     private readonly StackPanel vocabularyList = new();
+    private readonly ListBox sectionOrderList = new() { AllowDrop = true, BorderThickness = new(0), Background = Brushes.Transparent };
+    private Point sectionDragStart;
+    private WidgetSection? sectionDrag;
     private readonly List<CheckBox> todoVisibilityToggles = [];
     private readonly List<CheckBox> poetryVisibilityToggles = [];
     private readonly CancellationTokenSource lifetime = new();
@@ -134,7 +137,7 @@ public sealed class SettingsWindow : Window
         themes.SelectionChanged += (_, _) => { if (themes.SelectedIndex >= 0) { settings.Theme = ThemePalette.All[themes.SelectedIndex].Id; Save(); } }; panel.Children.Add(themes);
         panel.Children.Add(SliderRow("玻璃浓度", settings.GlassOpacity * 100, 15, 95, 5, "0'%'", v => { settings.GlassOpacity = v / 100; Save(); }));
         panel.Children.Add(SliderRow("圆角半径 R", settings.CornerRadius, 0, 64, 1, "0", v => { settings.CornerRadius = v; Save(); }));
-        panel.Children.Add(SliderRow("组件大小", settings.Scale * 100, 75, 150, 1, "0'%'", v => { settings.Scale = v / 100; Save(scaleOnly: true); }, continuous: true));
+        panel.Children.Add(SliderRow("组件大小", settings.Scale * 100, 40, 150, 1, "0'%'", v => { settings.Scale = v / 100; Save(scaleOnly: true); }, continuous: true));
         panel.Children.Add(Toggle("平滑缩放动画", settings.SmoothResize, v => { settings.SmoothResize = v; Save(); }));
         panel.Children.Add(SliderRow("组件字号", settings.TextScale * 100, 85, 125, 1, "0'%'", v => { settings.TextScale = v / 100; Save(); }, continuous: true));
         panel.Children.Add(Label("组件字重"));
@@ -158,7 +161,7 @@ public sealed class SettingsWindow : Window
     {
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
         panel.Children.Add(Label("留在桌面上的，由你决定。", true));
-        panel.Children.Add(Toggle("大时间（天气上方）", settings.ShowClock, v => { settings.ShowClock = v; Save(); }));
+        panel.Children.Add(Toggle("时间", settings.ShowClock, v => { settings.ShowClock = v; Save(); }));
         panel.Children.Add(Toggle("天气", settings.ShowWeather, v => { settings.ShowWeather = v; Save(); }));
         panel.Children.Add(Toggle("外设电量", settings.ShowDevices, v => { settings.ShowDevices = v; Save(); }));
         panel.Children.Add(Toggle("CPU 负载", settings.ShowCpu, v => { settings.ShowCpu = v; Save(); }));
@@ -190,8 +193,46 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Label("减小天气与外设行间距，隐藏电量条和负载曲线。关闭后恢复完整布局。", true));
         panel.Children.Add(Toggle("负载趋势曲线", settings.ShowGraphs, v => { settings.ShowGraphs = v; Save(); }));
         panel.Children.Add(Toggle("外设连接方式图标", settings.ShowConnectionIcons, v => { settings.ShowConnectionIcons = v; Save(); }));
+        panel.Children.Add(Label("模块排列顺序"));
+        panel.Children.Add(Label("拖动下方项目调整顺序，松开即保存。关闭的模块也保留位置；CPU、内存和温度共用一组。", true));
+        panel.Children.Add(sectionOrderList); BuildSectionOrder();
+        sectionOrderList.PreviewMouseLeftButtonDown += (_, e) => {
+            sectionDragStart = e.GetPosition(sectionOrderList);
+            sectionDrag = (ItemsControl.ContainerFromElement(sectionOrderList, e.OriginalSource as DependencyObject) as ListBoxItem)?.Tag as WidgetSection?;
+        };
+        sectionOrderList.MouseMove += (_, e) => {
+            if (e.LeftButton != MouseButtonState.Pressed || sectionDrag is not { } kind) return;
+            var point = e.GetPosition(sectionOrderList);
+            if (Math.Abs(point.X - sectionDragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - sectionDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            sectionDrag = null; DragDrop.DoDragDrop(sectionOrderList, new DataObject("Mizu.SectionOrder", kind), DragDropEffects.Move);
+        };
+        sectionOrderList.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent("Mizu.SectionOrder") ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+        sectionOrderList.Drop += (_, e) => {
+            if (e.Data.GetData("Mizu.SectionOrder") is not WidgetSection from) return;
+            var row = ItemsControl.ContainerFromElement(sectionOrderList, e.OriginalSource as DependencyObject) as ListBoxItem;
+            if (row?.Tag is WidgetSection target) MoveSection(from, target, e.GetPosition(row).Y > row.ActualHeight / 2);
+            else MoveSection(from, settings.SectionOrder.Last(), true);
+            e.Handled = true;
+        };
+        var orderActions = new WrapPanel();
+        void Shift(int direction) { if (sectionOrderList.SelectedItem is not ListBoxItem selected || selected.Tag is not WidgetSection from) return; int index = settings.SectionOrder.IndexOf(from); int target = Math.Clamp(index + direction, 0, settings.SectionOrder.Count - 1); MoveSection(from, settings.SectionOrder[target], direction > 0); }
+        orderActions.Children.Add(ActionButton("上移", (_, _) => Shift(-1))); orderActions.Children.Add(ActionButton("下移", (_, _) => Shift(1))); panel.Children.Add(orderActions);
         panel.Children.Add(Label("设置即时生效并自动保存。关闭显示只影响组件内容，已启用的阈值提醒继续工作。内容较多时整体缩小以适应屏幕高度。", true));
         return panel;
+    }
+    private void BuildSectionOrder()
+    {
+        sectionOrderList.Items.Clear();
+        foreach (var kind in settings.SectionOrder) {
+            var name = kind switch { WidgetSection.Clock => "时间", WidgetSection.Weather => "天气", WidgetSection.Devices => "外设电量", WidgetSection.Metrics => "系统负载与温度", WidgetSection.Network => "网络", WidgetSection.Media => "音乐", WidgetSection.Poetry => "诗词", WidgetSection.Vocabulary => "单词本", _ => "待办" };
+            sectionOrderList.Items.Add(new ListBoxItem { Tag = kind, Content = "☰   " + name, Padding = new(12, 8, 12, 8), Foreground = theme.Brush("#434B3E") });
+        }
+    }
+    private void MoveSection(WidgetSection from, WidgetSection target, bool after)
+    {
+        if (from == target || !settings.SectionOrder.Contains(from) || !settings.SectionOrder.Contains(target)) return;
+        settings.SectionOrder.Remove(from); int index = settings.SectionOrder.IndexOf(target); settings.SectionOrder.Insert(index + (after ? 1 : 0), from);
+        Save(); BuildSectionOrder(); sectionOrderList.SelectedItem = sectionOrderList.Items.Cast<ListBoxItem>().Single(row => Equals(row.Tag, from));
     }
     private void BuildProbeList()
     {
@@ -289,6 +330,7 @@ public sealed class SettingsWindow : Window
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
         panel.Children.Add(Toggle("在组件上显示单词本", settings.ShowVocabulary, v => { settings.ShowVocabulary = v; Save(); }));
         panel.Children.Add(SliderRow("显示组数", settings.VocabularyVisibleRows, 1, 8, 1, "0' 组'", v => { settings.VocabularyVisibleRows = (int)v; Save(); }));
+        panel.Children.Add(SliderRow("单词间距", settings.VocabularySpacing, 0, 40, 1, "0' px'", v => { settings.VocabularySpacing = (int)v; Save(); }));
         panel.Children.Add(Toggle("随机轮换（关闭则按录入顺序）", settings.VocabularyRandom, v => { settings.VocabularyRandom = v; Save(); }));
         panel.Children.Add(SliderRow("轮换间隔", settings.VocabularyIntervalSeconds, 5, 3600, 5, "0' 秒'", v => { settings.VocabularyIntervalSeconds = (int)v; Save(); }));
         panel.Children.Add(Toggle("隐藏中文释义（包括悬停提示）", settings.VocabularyHideMeaning, v => { settings.VocabularyHideMeaning = v; Save(); }));
@@ -385,8 +427,11 @@ public sealed class SettingsWindow : Window
     }
     private UIElement Devices()
     {
+        // Device filters affect the panel only; the full list stays editable here.
         var panel = new StackPanel { Margin = new(1, 8, 12, 0) };
         panel.Children.Add(Label("自动检测连接方式与设备类型。识别有误时可手动调整。", true));
+        panel.Children.Add(Toggle("仅显示活跃外设", settings.HideInactiveDevices, v => { settings.HideInactiveDevices = v; Save(); }));
+        panel.Children.Add(Label("开启后，面板仅保留已确认在线的设备；离线或连接状态未知的设备仍可在本页查看。", true));
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         actions.Children.Add(ActionButton("重新检测", async (_, _) => { status.Text = "检测中…"; await widget.Engine.RefreshDevicesAsync(); BuildDevices(); status.Text = "检测完成"; }));
         actions.Children.Add(ActionButton("导出诊断", (_, _) =>

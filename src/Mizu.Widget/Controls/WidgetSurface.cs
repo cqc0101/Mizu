@@ -11,6 +11,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     public const double SurfaceWidth = 356, SurfaceHeight = 472;
     public static readonly DependencyProperty FooterRevealProperty = DependencyProperty.Register(nameof(FooterReveal), typeof(double), typeof(WidgetSurface), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
     public double FooterReveal { get => (double)GetValue(FooterRevealProperty); set => SetValue(FooterRevealProperty, value); }
+    public double FooterHeight { get; set; } = 44;
     public bool PreviewMaterial { get; set; }
     public WidgetLayout Layout => WidgetLayout.Calculate(settings);
     private readonly DevicePager pager = new();
@@ -22,7 +23,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     {
         get
         {
-            var visible = state.Devices.Where(d => !settings.HiddenDevices.Contains(d.Id)).Select(d => d with
+            var visible = state.Devices.Where(d => !settings.HiddenDevices.Contains(d.Id) && (!settings.HideInactiveDevices || d.State == LinkState.Online)).Select(d => d with
     { Name = settings.NameOverrides.GetValueOrDefault(d.Id, d.Name), Kind = settings.TypeOverrides.GetValueOrDefault(d.Id, d.Kind) })
                 .OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.ObservedAt.HasValue).ThenBy(d => d.Kind).ToArray();
             foreach (var device in visible) if (!deviceOrder.Contains(device.Id)) deviceOrder.Add(device.Id);
@@ -54,7 +55,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         base.OnRender(d);
         foreground = Art.Brush(Palette.Text); secondary = Art.Brush(Palette.Secondary);
         quiet = Art.Brush(Palette.Quiet); green = Art.Brush(Palette.Accent); line = Art.Brush(Palette.Line);
-        var layout = Layout; double height = layout.Height + 44 * FooterReveal, radius = settings.CornerRadius;
+        var layout = Layout; double height = layout.Height + FooterHeight * FooterReveal, radius = settings.CornerRadius;
         vocabulary.Update(settings, DateTimeOffset.Now);
         var baseColor = Art.Brush(Palette.Base).Color;
         baseColor.A = PreviewMaterial ? (byte)212 : (byte)(settings.GlassOpacity * 255);
@@ -97,9 +98,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                 case WidgetSection.Vocabulary:
                     for (int row = 0; row < vocabulary.Visible.Count; row++)
                     {
-                        var entry = vocabulary.Visible[row]; var y = section.Top + row * (settings.VocabularyHideMeaning ? 46 : 76);
+                        var entry = vocabulary.Visible[row]; var y = section.Top + row * WidgetLayout.VocabularyRowHeight(settings);
                         Text(d, entry.Word, 31, y + 3, 22, foreground, Dpi, medium: true, width: 294);
-                        if (!settings.VocabularyHideMeaning) Text(d, entry.Meaning, 31, y + 39, 12, secondary, Dpi, width: 294);
+                        if (!settings.VocabularyHideMeaning) Text(d, entry.Meaning, 31, y + 34, 12, secondary, Dpi, width: 294);
                     }
                     break;
                 case WidgetSection.Todo:
@@ -292,7 +293,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip;
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
         if (area?.Kind == WidgetSection.Vocabulary) {
-            var row = (int)((p.Y - area.Top) / (settings.VocabularyHideMeaning ? 46 : 76));
+            var row = (int)((p.Y - area.Top) / WidgetLayout.VocabularyRowHeight(settings));
             if (row >= 0 && row < vocabulary.Visible.Count) {
                 var word = vocabulary.Visible[row];
                 tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮切换单词";

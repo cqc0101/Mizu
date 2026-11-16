@@ -27,7 +27,7 @@ rotationSettings.ShowVocabulary=true;rotationSettings.VocabularyRandom=true;rota
 bool uniqueGroups=true; for(int i=0;i<100;i++){rotation.Advance(1,now.AddSeconds(100+i));uniqueGroups &= rotation.Visible.Count==2 && rotation.Visible.Distinct().Count()==2;}
 Check(uniqueGroups,"Random groups contain the requested number of distinct words");
 rotationSettings.VocabularyHideMeaning=true;var wordArea=WidgetLayout.Calculate(rotationSettings).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
-Check(wordArea.Height==92,"Hidden meanings release unused row height");
+Check(wordArea.Height==84,"Hidden meanings release unused row height");
 rotationSettings.ShowClock=true;Check(WidgetLayout.Calculate(rotationSettings).Sections[0].Kind==WidgetSection.Clock,"Clock appears before weather");
 rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();Check(rotationSettings.VocabularyVisibleRows==8 && rotationSettings.VocabularyIntervalSeconds==5,"Invalid rotation settings are bounded");
 var q = HidppProtocol.Request(1, 7, 1, 10);
@@ -180,6 +180,14 @@ try
     poemSettings.ShowPoetry = false;
     Check(!WidgetLayout.Calculate(poemSettings).Sections.Any(s => s.Kind == WidgetSection.Poetry), "Poetry can be removed from layout");
     var store = new SettingsStore(Path.Combine(temp, "settings.json"));
+    var customOrder=new AppSettings {Scale=.4,ShowClock=true,HideInactiveDevices=true,VocabularySpacing=0,SectionOrder=[WidgetSection.Vocabulary,WidgetSection.Clock,WidgetSection.Vocabulary,(WidgetSection)999]};
+    store.Save(customOrder);var ordered=store.Load();
+    Check(ordered.SectionOrder.Count==9 && ordered.SectionOrder[0]==WidgetSection.Vocabulary && ordered.SectionOrder.Distinct().Count()==9,"Custom order reloads, drops invalid duplicates and appends missing modules");
+    Check(ordered.Scale==.4 && ordered.HideInactiveDevices && ordered.VocabularySpacing==0,"Small scale, activity filter and tight spacing survive disk reload");
+    ordered.Vocabulary=[new(){Word="first"},new(){Word="second"}];ordered.ShowVocabulary=true;ordered.ShowClock=true;
+    Check(WidgetLayout.Calculate(ordered).Sections[0].Kind==WidgetSection.Vocabulary,"Custom module order affects actual widget geometry");
+    ordered.VocabularyVisibleRows=2;ordered.VocabularyHideMeaning=true;
+    Check(WidgetLayout.Calculate(ordered).Sections.First(s=>s.Kind==WidgetSection.Vocabulary).Height==68,"Zero spacing gives compact word rows");
     var vocabSettings = new AppSettings { ShowVocabulary=true, Vocabulary=[new(){Word=" serene ",Meaning=" 宁静的 "},new(){Word=" "}] };
     store.Save(vocabSettings);var words=store.Load();
     Check(words.ShowVocabulary && words.Vocabulary.Count==1 && words.Vocabulary[0].Word=="serene" && words.Vocabulary[0].Meaning=="宁静的","Vocabulary survives disk reload and drops blank entries");
