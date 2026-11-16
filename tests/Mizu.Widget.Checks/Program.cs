@@ -24,6 +24,10 @@ System.Windows.Application.Current?.Shutdown(1); return 1;
 static RenderTargetBitmap Capture(FrameworkElement element) {
 var bitmap=new RenderTargetBitmap((int)Math.Ceiling(element.ActualWidth*2),(int)Math.Ceiling(element.ActualHeight*2),192,192,PixelFormats.Pbgra32);bitmap.Render(element);return bitmap;
 }
+static IEnumerable<string> DrawingText(Drawing? drawing) {
+if(drawing is GlyphRunDrawing glyph && glyph.GlyphRun.Characters is { } characters)yield return new string(characters.ToArray());
+if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var text in DrawingText(child))yield return text;
+}
 static void Pump(int milliseconds) {
 var frame=new System.Windows.Threading.DispatcherFrame();
 var timer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMilliseconds(milliseconds)};
@@ -55,6 +59,18 @@ var wiredSurface=new WidgetSurface(wiredUiState,wiredUiSettings);
 Check(wiredSurface.VisibleDevices.Count==0,"Recognized wired keyboards remain hidden when independent switch is off");
 wiredUiSettings.ShowWiredKeyboards=true;Check(wiredSurface.VisibleDevices.Single().Name=="HHKB Professional" && wiredSurface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Devices).Height==78,"Independent wired switch adds one readable keyboard row");
 wiredUiSettings.ShowWiredKeyboards=false;Check(wiredSurface.VisibleDevices.Count==0,"Disabling wired switch immediately removes its row despite sleep history");
+wiredUiSettings.ShowWiredKeyboards=true;wiredUiSettings.ShowWeather=false;wiredUiSettings.ShowCpu=wiredUiSettings.ShowMemory=wiredUiSettings.ShowTemperature=false;
+wiredUiState.Devices=wiredUiState.Devices.Select(d=>d with {Percent=83,Charging=true}).ToArray();
+wiredSurface.Width=356;wiredSurface.Height=wiredSurface.Layout.Height;wiredSurface.Measure(new(356,wiredSurface.Height));wiredSurface.Arrange(new Rect(0,0,356,wiredSurface.Height));wiredSurface.UpdateLayout();Capture(wiredSurface);
+var wiredText=DrawingText(VisualTreeHelper.GetDrawing(wiredSurface)).ToArray();
+Check(wiredText.Any(t=>t.Contains("有线连接")) && !wiredText.Any(t=>t.Contains("83%")),"Wired rendering uses connection status instead of a reported battery percentage");
+var weatherSettings=new AppSettings {ShowDevices=false,ShowCpu=false,ShowMemory=false,ShowTemperature=false,WeatherHourly=false,WeatherDaily=false};
+var weatherWindow=new MainWindow(weatherSettings,WidgetState.Preview(),preview:true,persistSettings:false);weatherWindow.Show();Pump(60);var weatherHeight=weatherWindow.VisualContent.Height;
+weatherSettings.WeatherHourly=true;weatherSettings.ForecastHours=10;weatherWindow.ApplySettings();Pump(70);
+Check(weatherWindow.VisualContent.Height>weatherHeight && weatherWindow.VisualContent.Height<weatherHeight+120,"Weather expansion has intermediate heights");
+Check((double)weatherWindow.Surface.GetValue(WidgetSurface.WeatherProgressProperty)>0 && (double)weatherWindow.Surface.GetValue(WidgetSurface.WeatherProgressProperty)<1,"Weather content crossfades during geometry transition");
+weatherSettings.WeatherHourly=false;weatherSettings.WeatherDaily=true;weatherSettings.ForecastDays=4;weatherWindow.ApplySettings();Pump(350);
+Check(Math.Abs(weatherWindow.VisualContent.Height-WidgetLayout.Calculate(weatherSettings,0).Height)<.1 && Math.Abs(weatherWindow.Width-356)<.1,"Interrupted weather switching settles at latest layout without changing scale");weatherWindow.Hide();
 var rowDevice=new Peripheral("row-mouse","Mouse A9",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,70,false,"test",DateTimeOffset.UtcNow);
 var rowState=new WidgetState {Devices=[rowDevice]};
 var rowWindow=new MainWindow(new AppSettings {ShowWeather=false,ShowCpu=false,ShowMemory=false,ShowTemperature=false,HideInactiveDevices=true},rowState,preview:true,persistSettings:false);
@@ -95,7 +111,7 @@ main.UpdateLayout(); Check(settingsLive.Todos[0].Completed && Desc<CheckBox>(gri
 var input=Desc<TextBox>(grid).Single();input.Text="New inline task";
 var add=Desc<Button>(grid).Single(b=>b.ToolTip is ToolTip hint && Equals(hint.Content,"添加待办"));add.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
 main.UpdateLayout(); Check(settingsLive.Todos.Count==3 && settingsLive.Todos[2].Text=="New inline task","Inline add persists a new task");
-settingsLive.ShowWeather=settingsLive.ShowDevices=settingsLive.ShowMemory=settingsLive.ShowTemperature=false;settingsLive.ShowTodo=false;main.ApplySettings();main.UpdateLayout();
+settingsLive.ShowWeather=settingsLive.ShowDevices=settingsLive.ShowMemory=settingsLive.ShowTemperature=false;settingsLive.ShowTodo=false;main.ApplySettings();Pump(330);main.UpdateLayout();
 Check(grid.ActualHeight==WidgetLayout.Calculate(settingsLive).Height && Desc<TextBox>(grid).Count()==0,"Disabling modules reflows window and removes todo editor");
 var dialog=new SettingsWindow(main);dialog.Show();dialog.UpdateLayout();var tabs=Desc<TabControl>(dialog).Single();Check(tabs.Items.Count==9,"Nine settings pages including vocabulary and About");
 tabs.SelectedIndex=7;dialog.UpdateLayout();
@@ -104,11 +120,11 @@ WordInput("新单词").Text="serene";WordInput("新单词释义").Text="宁静�
 Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加单词")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(settingsLive.Vocabulary.Single().Word=="serene" && settingsLive.Vocabulary.Single().Meaning=="宁静的","Vocabulary controls add a word and meaning");
 var showWords=Desc<CheckBox>(dialog).Single(c=>Equals(c.Content,"在组件上显示单词本"));showWords.IsChecked=true;main.UpdateLayout();
-Check(main.Surface.Layout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Vocabulary toggle adds its section");
+Check(main.Surface.TargetLayout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Vocabulary toggle adds its section");
 WordInput("新单词").Text="SERENE";Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加单词")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(settingsLive.Vocabulary.Count==1,"Duplicate word does not replace existing notes");
 Desc<Button>(dialog).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="删除单词").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-Check(settingsLive.Vocabulary.Count==0 && !main.Surface.Layout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Deleting the final word removes its reserved space");
+Check(settingsLive.Vocabulary.Count==0 && !main.Surface.TargetLayout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Deleting the final word removes its reserved space");
 tabs.SelectedIndex=8;dialog.UpdateLayout();
 Check(Desc<TextBlock>(dialog).Any(t=>t.Text=="v0.6.0") && Desc<TextBlock>(dialog).Any(t=>t.Text=="v0.5.3"),"Packaged version history contains current and prior releases");
 tabs.SelectedIndex=0;dialog.UpdateLayout();
@@ -197,16 +213,16 @@ Check(!hover.IsOpen,"Pointer leave closes the surface hint");
 main.Settings.ShowNetwork = true; main.Settings.ShowMedia = true;
 main.State.Media = new("A very long music title for truncation and layout verification", "Example artist", true, true, true, false, "Example session");
 main.State.Network = new(true, "Example adapter", 1048576, 2048, 1.7, 24, 60, "1.1.1.1");
-main.ApplySettings(); main.UpdateLayout();
+main.ApplySettings(); Pump(330); main.UpdateLayout();
 var mediaButtons = Desc<Button>(main).Where(b => new[] { "上一首", "暂停", "下一首" }.Contains(System.Windows.Automation.AutomationProperties.GetName(b))).ToArray();
 Check(mediaButtons.Length == 3, "Media has three accessible controls");
 Check(mediaButtons.Single(b => System.Windows.Automation.AutomationProperties.GetName(b) == "下一首").IsEnabled == false, "Unsupported media commands are disabled");
-Check(main.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Network) && main.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Media), "Both new modules reflow into widget");
+Check(main.Surface.TargetLayout.Sections.Any(s => s.Kind == WidgetSection.Network) && main.Surface.TargetLayout.Sections.Any(s => s.Kind == WidgetSection.Media), "Both new modules reflow into widget");
 main.Settings.NetworkProbeTargets = ["192.0.2.1", "2001:db8::1"]; main.Settings.ShowNetworkProbeIp = true;
-main.State.Network = main.State.Network! with { Targets = [new("192.0.2.1",0,12,30),new("2001:db8::1",10,25,30)] };main.ApplySettings();main.UpdateLayout();
-Check(main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==164 && main.Surface.NetworkHint.Contains("192.0.2.1"),"Multiple network probe rows reserve title, labels and IP headings");
-main.Settings.ShowNetworkProbeIp=false;main.ApplySettings();main.UpdateLayout();
-Check(main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==124 && !main.Surface.NetworkHint.Contains("192.0.2.1") && !main.Surface.NetworkHint.Contains("2001:db8::1"),"Hiding probe IPs redacts both display headings and hover details");
+main.State.Network = main.State.Network! with { Targets = [new("192.0.2.1",0,12,30),new("2001:db8::1",10,25,30)] };main.ApplySettings();Pump(330);main.UpdateLayout();
+Check(main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==164 && main.Surface.NetworkHint.Contains("192.0.2.1"),"Multiple network probe rows reserve title, labels and IP headings");
+main.Settings.ShowNetworkProbeIp=false;main.ApplySettings();Pump(330);main.UpdateLayout();
+Check(main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Network).Height==124 && !main.Surface.NetworkHint.Contains("192.0.2.1") && !main.Surface.NetworkHint.Contains("2001:db8::1"),"Hiding probe IPs redacts both display headings and hover details");
 tabs.SelectedIndex=1;typeof(SettingsWindow).GetMethod("BuildProbeList",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[]);dialog.UpdateLayout();
 var probeInput=Desc<TextBox>(dialog).Single(t=>string.IsNullOrEmpty(t.Text));probeInput.Text="203.0.113.8";
 Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加 IP")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));dialog.UpdateLayout();
@@ -214,11 +230,11 @@ Check(main.Settings.NetworkProbeTargets!.Count==3 && main.Settings.NetworkProbeT
 Desc<Button>(dialog).First(b=>b.ToolTip is ToolTip t && Equals(t.Content,"删除探测 IP")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));dialog.UpdateLayout();
 Check(main.Settings.NetworkProbeTargets!.Count==2,"Settings remove a configured probe through its row control");
 main.Settings.ShowMedia = false; main.Settings.ShowNetwork = false; main.ApplySettings(); main.UpdateLayout();
-Check(!main.Surface.Layout.Sections.Any(s => s.Kind is WidgetSection.Media or WidgetSection.Network), "Disabling modules releases their layout space");
+Check(!main.Surface.TargetLayout.Sections.Any(s => s.Kind is WidgetSection.Media or WidgetSection.Network), "Disabling modules releases their layout space");
 main.Settings.ShowClock=true;main.Settings.ShowTodo=true;main.Settings.ShowVocabulary=true;
 main.Settings.Vocabulary=[new(){Word="serene",Meaning="宁静的"},new(){Word="gentle",Meaning="温柔的"},new(){Word="bloom",Meaning="绽放"}];
-main.Settings.VocabularyVisibleRows=2;main.ApplySettings();main.UpdateLayout();
-Check(main.Surface.Layout.Sections[0].Kind==WidgetSection.Clock && main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==132,"Clock and two word groups occupy separate sections");
+main.Settings.VocabularyVisibleRows=2;main.ApplySettings();Pump(330);main.UpdateLayout();
+Check(main.Surface.TargetLayout.Sections[0].Kind==WidgetSection.Clock && main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==132,"Clock and two word groups occupy separate sections");
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]);Pump(320);
 Button AddChoice(string name)=>Desc<Button>(main).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==name);
 Check(AddChoice("添加事件").IsVisible && AddChoice("添加单词").IsVisible,"Both enabled add actions appear side by side");
@@ -231,8 +247,8 @@ Check(inlineMeaning.IsKeyboardFocusWithin,"Word Enter moves focus to the separat
 inlineMeaning.Text="安静的";inlineMeaning.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main),0,Key.Enter){RoutedEvent=Keyboard.KeyDownEvent});Pump(260);
 Check(main.TodoReveal>.99 && main.VisualContent.Height-WidgetLayout.Calculate(main.Settings).Height>80,"Two-row word editor reserves its full animated height");
 Check(main.Settings.Vocabulary.Any(w=>w.Word=="quiet" && w.Meaning=="安静的"),"Hover editor saves words without opening settings");
-main.Settings.VocabularyHideMeaning=true;main.ApplySettings();main.UpdateLayout();Capture(main.VisualContent);
-Check(main.Surface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==84,"Hidden Chinese meanings shrink the displayed groups");
+main.Settings.VocabularyHideMeaning=true;main.ApplySettings();Pump(330);main.UpdateLayout();Capture(main.VisualContent);
+Check(main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==84,"Hidden Chinese meanings shrink the displayed groups");
 main.Settings.ShowTodo=false;main.ApplySettings();
 Check(!Desc<Button>(main).Any(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="添加事件"),"Disabled todo feature removes its hover action");
 main.Settings.ShowClock=false;main.Settings.ShowVocabulary = false; main.Settings.ShowTodo = true; main.Settings.Todos.Clear(); main.ApplySettings(); main.UpdateLayout();
@@ -241,7 +257,20 @@ main.Settings.HideInactiveDevices=true;Check(main.Surface.VisibleDevices.All(d=>
 tabs.SelectedIndex=1;dialog.UpdateLayout();
 typeof(SettingsWindow).GetMethod("MoveSection",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,new object[]{WidgetSection.Vocabulary,WidgetSection.Weather,false});
 Check(main.Settings.SectionOrder.IndexOf(WidgetSection.Vocabulary)<main.Settings.SectionOrder.IndexOf(WidgetSection.Weather),"Reordering settings updates the persisted module order");
-Check(!main.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Todo), "Empty todo has no body section or reserved footer");
+Pump(230);
+var orderBefore=main.Settings.SectionOrder.ToArray();var dragKind=orderBefore[0];
+var orderList=Desc<ListBox>(dialog).Single();
+typeof(SettingsWindow).GetMethod("BeginOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind]);
+typeof(SettingsWindow).GetMethod("PreviewSectionOrder",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind,8]);
+Check(main.Settings.SectionOrder.SequenceEqual(orderBefore) && Equals(((ListBoxItem)orderList.Items[8]).Tag,dragKind),"Drag preview changes visible order without saving settings");
+Check(orderList.Items.Cast<ListBoxItem>().Any(row=>row.RenderTransform is TranslateTransform offset && offset.HasAnimatedProperties),"Displaced sorting rows have movement animations");
+typeof(SettingsWindow).GetMethod("FinishOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[false]);Pump(230);
+Check(orderList.Items.Cast<ListBoxItem>().Select(row=>(WidgetSection)row.Tag).SequenceEqual(orderBefore),"Cancel restores original order");
+typeof(SettingsWindow).GetMethod("BeginOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind]);
+typeof(SettingsWindow).GetMethod("PreviewSectionOrder",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind,8]);
+typeof(SettingsWindow).GetMethod("FinishOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[true]);Pump(330);
+Check(main.Settings.SectionOrder.Last()==dragKind,"Drop commits previewed order");
+Check(!main.Surface.TargetLayout.Sections.Any(s => s.Kind == WidgetSection.Todo), "Empty todo has no body section or reserved footer");
 var footer = (FrameworkElement)typeof(MainWindow).GetField("todoEditorHost",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(main)!;
 Check(footer.Opacity == 0 && !footer.IsHitTestVisible, "Footer starts hidden with no invisible hit targets");
 var baseFooterHeight = WidgetLayout.Calculate(main.Settings).Height;
@@ -264,7 +293,7 @@ Check(main.TodoReveal < .001, "Losing input focus allows the footer to collapse"
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]);Pump(320);
 emptyInput.Text = "First task from hover footer";
 emptyInput.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(main), 0, Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent }); main.UpdateLayout();
-Check(main.Settings.Todos.Count == 1 && main.Surface.Layout.Sections.Single(s => s.Kind == WidgetSection.Todo).Height == 32, "A task reserves only its own row");
+Check(main.Settings.Todos.Count == 1 && main.Surface.TargetLayout.Sections.Single(s => s.Kind == WidgetSection.Todo).Height == 32, "A task reserves only its own row");
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[false]); Pump(500);main.UpdateLayout();
 Check(main.TodoReveal < .001 && Math.Abs(main.VisualContent.ActualHeight - WidgetLayout.Calculate(main.Settings).Height) < .1, "Leave removes editor height even with tasks present");
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]);Pump(40);
@@ -297,7 +326,7 @@ if (Environment.GetEnvironmentVariable("MIZU_SETTINGS_THEME_GALLERY") is { } gal
     var encoder = new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(result));using var stream=System.IO.File.Create(gallery);encoder.Save(stream);
 }
 main.Settings.ShowPoetry = true; main.State.Poetry = new("海内存知己，天涯若比邻。", "王勃", "送杜少府之任蜀州", DateTimeOffset.UtcNow); main.ApplySettings();main.UpdateLayout();
-Check(main.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Poetry), "Poetry appears as an independent section");
+Check(main.Surface.TargetLayout.Sections.Any(s => s.Kind == WidgetSection.Poetry), "Poetry appears as an independent section");
 if (Environment.GetEnvironmentVariable("MIZU_POETRY_PREVIEW") is { } poemPreview) {
     main.Settings.ShowWeather = main.Settings.ShowDevices = main.Settings.ShowCpu = main.Settings.ShowMemory = main.Settings.ShowTemperature = main.Settings.ShowNetwork = main.Settings.ShowMedia = false;
     main.Settings.Theme = "light"; main.Settings.CornerRadius = 30; main.Settings.TextScale = 1; main.Settings.TextWeight = 400; main.Settings.Scale = 1; main.Settings.SmoothResize = false;

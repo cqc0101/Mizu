@@ -4,6 +4,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Documents;
 using Microsoft.Win32;
 using Mizu.Core;
 using Mizu.Core.Services;
@@ -25,6 +27,11 @@ public sealed class SettingsWindow : Window
     private Point sectionDragStart;
     private ComboBox? themeSelector;
     private WidgetSection? sectionDrag;
+    private WidgetSection? activeOrderDrag;
+    private List<WidgetSection>? orderPreview;
+    private bool orderDropAccepted;
+    private OrderDragAdorner? orderGhost;
+    private readonly TextBlock orderHint = new() { Text = "拖动预览顺序 · 松开保存 · Esc 取消", Margin = new(0, 8, 0, 8), FontSize = 12 };
     private readonly List<CheckBox> todoVisibilityToggles = [];
     private readonly List<CheckBox> poetryVisibilityToggles = [];
     private readonly CancellationTokenSource lifetime = new();
@@ -206,7 +213,8 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Toggle("外设连接方式图标", settings.ShowConnectionIcons, v => { settings.ShowConnectionIcons = v; Save(); }));
         panel.Children.Add(Label("模块排列顺序"));
         panel.Children.Add(Label("拖动下方项目调整顺序，松开即保存。关闭的模块也保留位置；CPU、内存和温度共用一组。", true));
-        panel.Children.Add(sectionOrderList); BuildSectionOrder();
+        sectionOrderList.SetResourceReference(ItemsControl.ItemContainerStyleProperty, "OrderItemStyle");
+        panel.Children.Add(sectionOrderList); orderHint.Foreground = theme.Brush("#8A9183"); panel.Children.Add(orderHint); BuildSectionOrder();
         sectionOrderList.PreviewMouseLeftButtonDown += (_, e) => {
             sectionDragStart = e.GetPosition(sectionOrderList);
             sectionDrag = (ItemsControl.ContainerFromElement(sectionOrderList, e.OriginalSource as DependencyObject) as ListBoxItem)?.Tag as WidgetSection?;
@@ -215,15 +223,28 @@ public sealed class SettingsWindow : Window
             if (e.LeftButton != MouseButtonState.Pressed || sectionDrag is not { } kind) return;
             var point = e.GetPosition(sectionOrderList);
             if (Math.Abs(point.X - sectionDragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - sectionDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            sectionDrag = null; DragDrop.DoDragDrop(sectionOrderList, new DataObject("Mizu.SectionOrder", kind), DragDropEffects.Move);
+            sectionDrag = null; BeginOrderPreview(kind); orderDropAccepted = false;
+            var row = sectionOrderList.Items.Cast<ListBoxItem>().Single(r => Equals(r.Tag, kind));
+            var layer = AdornerLayer.GetAdornerLayer(sectionOrderList);
+            orderGhost = new OrderDragAdorner(sectionOrderList, row, e.GetPosition(row).Y); orderGhost.Follow(point); layer?.Add(orderGhost);
+            row.Opacity = .28;
+            try { DragDrop.DoDragDrop(sectionOrderList, new DataObject("Mizu.SectionOrder", kind), DragDropEffects.Move); }
+            finally { if (orderGhost is not null) layer?.Remove(orderGhost); orderGhost = null; FinishOrderPreview(orderDropAccepted); }
         };
-        sectionOrderList.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent("Mizu.SectionOrder") ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+        sectionOrderList.DragOver += (_, e) => {
+            bool valid = e.Data.GetData("Mizu.SectionOrder") is WidgetSection kind && activeOrderDrag == kind;
+            e.Effects = valid ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true;
+            if (!valid) return;
+            orderGhost?.Follow(e.GetPosition(sectionOrderList));
+            var first = sectionOrderList.Items.Cast<ListBoxItem>().First();
+            if (VisualTreeHelper.GetParent(first) is FrameworkElement host) {
+                int slot = Math.Clamp((int)(e.GetPosition(host).Y / 40), 0, sectionOrderList.Items.Count - 1);
+                PreviewSectionOrder(activeOrderDrag!.Value, slot);
+            }
+        };
         sectionOrderList.Drop += (_, e) => {
-            if (e.Data.GetData("Mizu.SectionOrder") is not WidgetSection from) return;
-            var row = ItemsControl.ContainerFromElement(sectionOrderList, e.OriginalSource as DependencyObject) as ListBoxItem;
-            if (row?.Tag is WidgetSection target) MoveSection(from, target, e.GetPosition(row).Y > row.ActualHeight / 2);
-            else MoveSection(from, settings.SectionOrder.Last(), true);
-            e.Handled = true;
+            if (e.Data.GetData("Mizu.SectionOrder") is not WidgetSection from || activeOrderDrag != from) return;
+            orderDropAccepted = true; e.Effects = DragDropEffects.Move; e.Handled = true;
         };
         var orderActions = new WrapPanel();
         void Shift(int direction) { if (sectionOrderList.SelectedItem is not ListBoxItem selected || selected.Tag is not WidgetSection from) return; int index = settings.SectionOrder.IndexOf(from); int target = Math.Clamp(index + direction, 0, settings.SectionOrder.Count - 1); MoveSection(from, settings.SectionOrder[target], direction > 0); }
@@ -236,14 +257,50 @@ public sealed class SettingsWindow : Window
         sectionOrderList.Items.Clear();
         foreach (var kind in settings.SectionOrder) {
             var name = kind switch { WidgetSection.Clock => "时间", WidgetSection.Weather => "天气", WidgetSection.Devices => "外设电量", WidgetSection.Metrics => "系统负载与温度", WidgetSection.Network => "网络", WidgetSection.Media => "音乐", WidgetSection.Poetry => "诗词", WidgetSection.Vocabulary => "单词本", _ => "待办" };
-            sectionOrderList.Items.Add(new ListBoxItem { Tag = kind, Content = "☰   " + name, Padding = new(12, 8, 12, 8), Foreground = theme.Brush("#434B3E") });
+            sectionOrderList.Items.Add(new ListBoxItem { Tag = kind, Content = "☰   " + name, Height = 40, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new(12, 8, 12, 8), Foreground = theme.Brush("#434B3E") });
         }
     }
     private void MoveSection(WidgetSection from, WidgetSection target, bool after)
     {
         if (from == target || !settings.SectionOrder.Contains(from) || !settings.SectionOrder.Contains(target)) return;
         settings.SectionOrder.Remove(from); int index = settings.SectionOrder.IndexOf(target); settings.SectionOrder.Insert(index + (after ? 1 : 0), from);
-        Save(); BuildSectionOrder(); sectionOrderList.SelectedItem = sectionOrderList.Items.Cast<ListBoxItem>().Single(row => Equals(row.Tag, from));
+        Save(); AnimateSectionOrder(settings.SectionOrder); sectionOrderList.SelectedItem = sectionOrderList.Items.Cast<ListBoxItem>().Single(row => Equals(row.Tag, from));
+    }
+    private void BeginOrderPreview(WidgetSection from)
+    {
+        activeOrderDrag = from; orderPreview = settings.SectionOrder.ToList();
+        orderHint.Text = "正在预览排列 · 松开保存 · Esc 取消";
+    }
+    private void PreviewSectionOrder(WidgetSection from, int slot)
+    {
+        if (orderPreview is null || !orderPreview.Contains(from)) return;
+        slot = Math.Clamp(slot, 0, orderPreview.Count - 1);
+        if (orderPreview.IndexOf(from) == slot) return;
+        orderPreview.Remove(from); orderPreview.Insert(slot, from); AnimateSectionOrder(orderPreview);
+    }
+    private void FinishOrderPreview(bool commit)
+    {
+        if (orderPreview is null) return;
+        if (commit) { settings.SectionOrder = orderPreview.ToList(); Save(); }
+        else AnimateSectionOrder(settings.SectionOrder);
+        foreach (var row in sectionOrderList.Items.Cast<ListBoxItem>()) row.Opacity = 1;
+        orderPreview = null; activeOrderDrag = null; orderHint.Text = "拖动预览顺序 · 松开保存 · Esc 取消";
+    }
+    private void AnimateSectionOrder(IReadOnlyList<WidgetSection> order)
+    {
+        var rows = sectionOrderList.Items.Cast<ListBoxItem>().ToArray();
+        var oldY = rows.ToDictionary(row => row, row => row.TranslatePoint(new Point(0, 0), sectionOrderList).Y);
+        var selected = sectionOrderList.SelectedItem;
+        foreach (var row in rows) row.RenderTransform = Transform.Identity;
+        sectionOrderList.Items.Clear();
+        foreach (var kind in order) sectionOrderList.Items.Add(rows.Single(row => Equals(row.Tag, kind)));
+        sectionOrderList.SelectedItem = selected; sectionOrderList.UpdateLayout();
+        foreach (var row in rows) {
+            double delta = oldY[row] - row.TranslatePoint(new Point(0, 0), sectionOrderList).Y;
+            var offset = new TranslateTransform(); row.RenderTransform = offset;
+            if (settings.SmoothResize && Math.Abs(delta) > .1)
+                offset.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(delta, 0, TimeSpan.FromMilliseconds(190)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        }
     }
     private void BuildProbeList()
     {
@@ -443,7 +500,7 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Label("自动检测连接方式与设备类型。识别有误时可手动调整。", true));
         panel.Children.Add(Toggle("仅显示活跃外设", settings.HideInactiveDevices, v => { settings.HideInactiveDevices = v; Save(); }));
         panel.Children.Add(Toggle("显示已识别型号的有线键盘", settings.ShowWiredKeyboards, v => { settings.ShowWiredKeyboards = v; Save(); }));
-        panel.Children.Add(Label("只显示 USB 描述中具有明确品牌型号的键盘；通用或无法确认型号的键盘、虚拟接口与接收器不显示。有线键盘无电量时显示 —。默认关闭。", true));
+        panel.Children.Add(Label("只显示 USB 描述中具有明确品牌型号的键盘；通用或无法确认型号的键盘、虚拟接口与接收器不显示。有线设备显示“有线连接”，不展示电量。默认关闭。", true));
         panel.Children.Add(Label("外设休眠后保留显示：15 分钟无有效信号变灰，1 小时后隐藏，收到新信号后恢复。开启筛选可合并同一外设的通道；本页保留完整检测列表。", true));
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         actions.Children.Add(ActionButton("重新检测", async (_, _) => { status.Text = "检测中…"; await widget.Engine.RefreshDevicesAsync(); BuildDevices(); status.Text = "检测完成"; }));

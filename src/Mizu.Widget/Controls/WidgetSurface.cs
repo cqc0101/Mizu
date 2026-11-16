@@ -12,6 +12,10 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     public static readonly DependencyProperty FooterRevealProperty = DependencyProperty.Register(nameof(FooterReveal), typeof(double), typeof(WidgetSurface), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
     public double FooterReveal { get => (double)GetValue(FooterRevealProperty); set => SetValue(FooterRevealProperty, value); }
     public double FooterHeight { get; set; } = 44;
+    public static readonly DependencyProperty WeatherProgressProperty = DependencyProperty.Register("WeatherProgress", typeof(double), typeof(WidgetSurface), new FrameworkPropertyMetadata(1.0, FrameworkPropertyMetadataOptions.AffectsRender));
+    private DrawingGroup? weatherFrame, weatherFrom;
+    private string? weatherConfiguration;
+    private int weatherGeneration;
     public bool PreviewMaterial { get; set; }
     public WidgetLayout TargetLayout => WidgetLayout.Calculate(settings, VisibleDevices.Count);
     public WidgetLayout? TransitionLayout { get; set; }
@@ -81,7 +85,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                     Art.Text(d, DateTime.Now.ToString("HH:mm"), 29, section.Top - 9, 58, foreground, Dpi, width: 298, weight: settings.TextWeight, alignment: TextAlignment.Center);
                     Art.Text(d, DateTime.Now.ToString("MM.dd  dddd"), 29, section.Top + 65, 12, secondary, Dpi, width: 298, alignment: TextAlignment.Center);
                     break;
-                case WidgetSection.Weather: DrawWeather(d, section.Top); break;
+                case WidgetSection.Weather: DrawWeatherTransition(d, section); break;
                 case WidgetSection.Devices: DrawDevices(d, section.Top); break;
                 case WidgetSection.Metrics: DrawMetrics(d, section.Top); break;
                 case WidgetSection.Network: DrawNetwork(d, section.Top); break;
@@ -137,6 +141,31 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         }
     }
     private static string Speed(double? value) => value is not { } v ? "—" : v >= 1048576 ? $"{v / 1048576:0.0} MiB/s" : $"{v / 1024:0.0} KiB/s";
+    private void DrawWeatherTransition(DrawingContext d, SectionLayout section)
+    {
+        var key = $"{settings.WeatherCurrent}|{settings.WeatherTodayRange}|{settings.WeatherHourly}|{settings.WeatherDaily}|{settings.ForecastHours}|{settings.ForecastDays}|{settings.HourStep}|{settings.HourlyIncludeCurrent}|{settings.CompactMode}";
+        if (key != weatherConfiguration)
+        {
+            weatherConfiguration = key;
+            int generation = ++weatherGeneration;
+            weatherFrom = settings.SmoothResize ? weatherFrame : null;
+            if (weatherFrom is not null) {
+                var motion = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut } };
+                motion.Completed += (_, _) => { if (generation != weatherGeneration) return; SetValue(WeatherProgressProperty, 1.0); BeginAnimation(WeatherProgressProperty, null); weatherFrom = null; };
+                BeginAnimation(WeatherProgressProperty, motion, System.Windows.Media.Animation.HandoffBehavior.SnapshotAndReplace);
+            }
+            else { SetValue(WeatherProgressProperty, 1.0); BeginAnimation(WeatherProgressProperty, null); }
+        }
+        var frame = new DrawingGroup();
+        using (var context = frame.Open()) {
+            double progress = weatherFrom is null ? 1 : (double)GetValue(WeatherProgressProperty);
+            if (weatherFrom is not null) { context.PushOpacity(1 - progress); context.DrawDrawing(weatherFrom); context.Pop(); }
+            context.PushOpacity(progress); DrawWeather(context, 0); context.Pop();
+        }
+        weatherFrame = frame;
+        d.PushClip(new RectangleGeometry(new Rect(0, section.Top - 20, 356, section.Height + 20)));
+        d.PushTransform(new TranslateTransform(0, section.Top)); d.DrawDrawing(frame); d.Pop(); d.Pop();
+    }
     private void DrawWeather(DrawingContext d, double y)
     {
         var w = state.Weather;
@@ -212,12 +241,13 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             if (settings.CompactMode) d.Pop(); d.Pop();
             var textX = settings.CompactMode ? 105 : 122;
             Text(d, peripheral?.Name ?? "—", textX, y, settings.CompactMode ? 11 : 12, online ? foreground : secondary, Dpi, width: settings.CompactMode ? 155 : 204);
-            Text(d, peripheral?.Percent is { } percent ? $"{percent}%" : "—", textX, y + 18, settings.CompactMode ? 18 : 26, online ? foreground : quiet, Dpi);
-            if (peripheral?.Charging == true) Art.Icon(d, "bolt", textX + 75, y + 29, 12, green);
+            bool wired = peripheral?.Link == LinkKind.Wired;
+            Text(d, wired ? "有线连接" : peripheral?.Percent is { } percent ? $"{percent}%" : "—", textX, y + (wired ? 25 : 18), wired ? 13 : settings.CompactMode ? 18 : 26, online ? foreground : quiet, Dpi);
+            if (!wired && peripheral?.Charging == true) Art.Icon(d, "bolt", textX + 75, y + 29, 12, green);
             var connection = peripheral?.Link switch { LinkKind.Bluetooth => "bluetooth", LinkKind.Receiver => "receiver", LinkKind.NearLink => "nearlink", LinkKind.Wired => "wired", _ => "" };
             if (settings.ShowConnectionIcons && connection.Length > 0) Art.Icon(d, connection, 288, y + 25, 17, deviceLine, 1.05);
             d.DrawEllipse(online ? green : line, null, new(322, y + 34), 2.8, 2.8);
-            if (!settings.CompactMode)
+            if (!settings.CompactMode && !wired)
             {
                 d.DrawRoundedRectangle(line, null, new(textX, y + 59, 204, 2.5), 1.25, 1.25);
                 if (peripheral?.Percent is { } pct) d.DrawRoundedRectangle(online ? pct <= settings.BatteryThreshold ? Art.Brush("#B39B70") : green : quiet, null, new(textX, y + 59, 204.0 * pct / 100, 2.5), 1.25, 1.25);

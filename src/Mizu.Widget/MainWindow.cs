@@ -17,6 +17,7 @@ public sealed class MainWindow : Window
     private static readonly DependencyProperty LayoutProgressProperty = DependencyProperty.Register("LayoutProgress", typeof(double), typeof(MainWindow), new PropertyMetadata(1.0, (d, _) => ((MainWindow)d).UpdateLayoutTransition()));
     private WidgetLayout? layoutFrom, layoutTo, appliedLayout;
     private bool layoutAnimating;
+    private int layoutGeneration;
     public WidgetState State { get; }
     public WidgetSurface Surface { get; }
     public WidgetEngine Engine { get; }
@@ -158,18 +159,19 @@ public sealed class MainWindow : Window
         var target = Surface.TargetLayout;
         if (appliedLayout is not null && Math.Abs(appliedLayout.Height - target.Height) > .01)
         {
-            var from = Surface.TransitionLayout ?? appliedLayout; ApplySettings();
-            if (Settings.SmoothResize && IsLoaded) StartLayoutTransition(from, target);
+            ApplySettings();
         }
         Surface.InvalidateVisual(); UpdateMediaControls();
     }
     private void StartLayoutTransition(WidgetLayout from, WidgetLayout to)
     {
+        int generation = ++layoutGeneration;
         layoutFrom = from; layoutTo = to; layoutAnimating = true;
         Height = Math.Max(Height, (Math.Max(from.Height, to.Height) + FooterHeight) * widgetScale.ScaleY);
         SetValue(LayoutProgressProperty, 0.0);
         var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
         animation.Completed += (_, _) => {
+            if (generation != layoutGeneration) return;
             SetValue(LayoutProgressProperty, 1.0); BeginAnimation(LayoutProgressProperty, null);
             Surface.TransitionLayout = null; layoutAnimating = false; UpdateTodoGeometry(); UpdateMediaControls();
         };
@@ -297,11 +299,16 @@ public sealed class MainWindow : Window
         });
     public void ApplySettings()
     {
+        var previous = Surface.TransitionLayout ?? appliedLayout;
+        layoutGeneration++;
         layoutAnimating = false; BeginAnimation(LayoutProgressProperty, null); Surface.TransitionLayout = null;
         SettingsApplied?.Invoke();
         HoverHints.SetPalette(this, ThemePalette.Get(Settings.Theme));
         HoverHints.SetIsDark(this, ThemePalette.Get(Settings.Theme).Dark);
         var calculated = Surface.TargetLayout; appliedLayout = calculated;
+        bool transition = previous is not null && IsLoaded && Settings.SmoothResize && !previous.Sections.SequenceEqual(calculated.Sections);
+        layoutAnimating = transition;
+        if (transition) Surface.TransitionLayout = previous;
         var heightChanged = Math.Abs(layout.Height - calculated.Height) > .01;
         Topmost = Settings.AlwaysOnTop;
         layout.Height = Surface.Height = calculated.Height;
@@ -315,7 +322,13 @@ public sealed class MainWindow : Window
         Surface.InvalidateVisual(); NativeWindow.Apply(this, Settings);
         if (!HasAddActions || Settings.PanelLocked) AnimateTodoFooter(false, false);
         else if (IsMouseOver) AnimateTodoFooter(true);
-        UpdateTodoGeometry(); ResizeWidget(!heightChanged);
+        if (transition)
+        {
+            Surface.TransitionLayout = previous;
+            UpdateTodoGeometry(); ResizeWidget(false);
+            StartLayoutTransition(previous!, calculated);
+        }
+        else { UpdateTodoGeometry(); ResizeWidget(!heightChanged); }
     }
     private void ApplyPanelLock()
     {
@@ -356,7 +369,7 @@ public sealed class MainWindow : Window
             widgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null); widgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             layout.CacheMode = null;
             UpdateTodoGeometry();
-            Width = width; Height = footerAnimating || editorAnimating ? Math.Max(Height, (Surface.Layout.Height + FooterHeight) * target) : layout.Height * target;
+            Width = width; Height = footerAnimating || editorAnimating || layoutAnimating ? Math.Max(Height, (Surface.Layout.Height + FooterHeight) * target) : layout.Height * target;
             if (IsLoaded && Top < SystemParameters.WorkArea.Bottom && Top + height > SystemParameters.WorkArea.Bottom)
                 Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - height - 12);
         }
@@ -378,7 +391,9 @@ public sealed class MainWindow : Window
         var area = Surface.Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Media);
         var m = State.Media;
         if (area is not null) mediaHost.Margin = new(113, area.Top + 62, 0, 0);
-        var key = $"{area?.Height}|{m.Playing}|{m.Previous}|{m.Toggle}|{m.Next}|{Settings.Theme}";
+        mediaHost.Opacity = area is null ? 0 : Math.Clamp(area.Height / 104, 0, 1);
+        mediaHost.IsHitTestVisible = !Settings.PanelLocked && area?.Height >= 80;
+        var key = $"{area is not null}|{m.Playing}|{m.Previous}|{m.Toggle}|{m.Next}|{Settings.Theme}";
         if (key == mediaKey) return; mediaKey = key;
         HoverHints.CloseTree(mediaHost); mediaHost.Children.Clear();
         mediaHost.Visibility = area is null ? Visibility.Collapsed : Visibility.Visible;
