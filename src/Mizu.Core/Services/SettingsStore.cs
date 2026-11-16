@@ -31,6 +31,8 @@ public sealed class AppSettings
     public bool PoetryAutoRefresh { get; set; } = true;
     public int PoetryLines { get; set; } = 1;
     public bool ShowTodo { get; set; }
+    public bool ShowVocabulary { get; set; }
+    public List<VocabularyEntry> Vocabulary { get; set; } = [];
     public bool ShowGraphs { get; set; } = true;
     public bool ShowConnectionIcons { get; set; } = true;
     public bool WeatherBackupEnabled { get; set; } = true;
@@ -76,6 +78,12 @@ public sealed class AppSettings
         GlassOpacity = double.IsFinite(GlassOpacity) ? Math.Clamp(GlassOpacity, .15, .95) : .62;
         CornerRadius = double.IsFinite(CornerRadius) ? Math.Clamp(CornerRadius, 0, 64) : 30;
         PoetryLines = 1; // Kept only for compatibility with earlier settings files.
+        Vocabulary = (Vocabulary ?? []).Where(w => w is not null && !string.IsNullOrWhiteSpace(w.Word)).Take(500).ToList();
+        foreach (var entry in Vocabulary)
+        {
+            entry.Word = entry.Word.Trim()[..Math.Min(entry.Word.Trim().Length, 80)];
+            var meaning = (entry.Meaning ?? "").Trim(); entry.Meaning = meaning[..Math.Min(meaning.Length, 200)];
+        }
         WeatherCacheHours = Math.Clamp(WeatherCacheHours, 1, 72);
         ForecastHours = Math.Clamp(ForecastHours, 1, 12); HourStep = Math.Clamp(HourStep, 1, 6);
         ForecastDays = Math.Clamp(ForecastDays, 1, 7); TodoVisibleRows = Math.Clamp(TodoVisibleRows, 1, 8);
@@ -93,6 +101,12 @@ public sealed class AppSettings
         if (Theme is not ("light" or "dark" or "navy" or "pink" or "lavender")) Theme = "light";
         TypeOverrides ??= []; NameOverrides ??= []; HiddenDevices ??= [];
     }
+}
+
+public sealed class VocabularyEntry
+{
+    public string Word { get; set; } = "";
+    public string Meaning { get; set; } = "";
 }
 
 public sealed class TodoItem

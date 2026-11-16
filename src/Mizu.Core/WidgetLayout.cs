@@ -2,7 +2,7 @@ using Mizu.Core.Services;
 
 namespace Mizu.Core;
 
-public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, Todo }
+public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, Todo, Vocabulary }
 public sealed record SectionLayout(WidgetSection Kind, double Top, double Height);
 public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
 {
@@ -22,6 +22,7 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         if (s.ShowNetwork) Add(WidgetSection.Network, 60 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 52 : 32));
         if (s.ShowMedia) Add(WidgetSection.Media, 104);
         if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);
+        if (s.ShowVocabulary && s.Vocabulary.Count > 0) Add(WidgetSection.Vocabulary, 76);
         if (s.ShowTodo)
         {
             var count = s.Todos.Count(t => !s.HideCompletedTodos || !t.Completed);

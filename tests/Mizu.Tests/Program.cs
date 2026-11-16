@@ -160,6 +160,13 @@ try
     poemSettings.ShowPoetry = false;
     Check(!WidgetLayout.Calculate(poemSettings).Sections.Any(s => s.Kind == WidgetSection.Poetry), "Poetry can be removed from layout");
     var store = new SettingsStore(Path.Combine(temp, "settings.json"));
+    var vocabSettings = new AppSettings { ShowVocabulary=true, Vocabulary=[new(){Word=" serene ",Meaning=" 宁静的 "},new(){Word=" "}] };
+    store.Save(vocabSettings);var words=store.Load();
+    Check(words.ShowVocabulary && words.Vocabulary.Count==1 && words.Vocabulary[0].Word=="serene" && words.Vocabulary[0].Meaning=="宁静的","Vocabulary survives disk reload and drops blank entries");
+    words.ShowVocabulary=false;store.Save(words);
+    Check(store.Load().Vocabulary.Count==1 && !WidgetLayout.Calculate(words).Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Hiding vocabulary preserves saved entries without reserving space");
+    var wordPager=new DevicePager();
+    Check(wordPager.Advance(0,-120,3,0,pageSize:1)==1 && wordPager.Advance(1,-120,3,200,pageSize:1)==2 && wordPager.Advance(2,-120,3,400,pageSize:1)==2,"Single-word paging reaches every entry and stops at the end");
     settings.Scale = 99; settings.ProtectedPushToken = SettingsStore.Protect("test-private-token"); store.Save(settings);
     var restored = store.Load();
     Check(restored.Scale == 1.5 && SettingsStore.Unprotect(restored.ProtectedPushToken) == "test-private-token", "Bounded settings and DPAPI roundtrip");

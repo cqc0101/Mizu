@@ -14,6 +14,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     public bool PreviewMaterial { get; set; }
     public WidgetLayout Layout => WidgetLayout.Calculate(settings);
     private readonly DevicePager pager = new();
+    private readonly DevicePager vocabularyPager = new();
+    private int vocabularyPage;
+    private VocabularyEntry? CurrentWord => settings.Vocabulary.Count == 0 ? null : settings.Vocabulary[Math.Clamp(vocabularyPage, 0, settings.Vocabulary.Count - 1)];
     private readonly List<string> deviceOrder = [];
     public IReadOnlyList<Peripheral> VisibleDevices
     {
@@ -85,6 +88,13 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                     var credit = state.Poetry is { } source ? $"— {source.DynastyMark} · 《{source.Origin}》" : "—";
                     Art.Text(d, credit, 31, section.Top + 38, 11 * settings.TextScale, secondary, Dpi, width: 294,
                         weight: settings.TextWeight, alignment: TextAlignment.Right);
+                    break;
+                case WidgetSection.Vocabulary:
+                    if (CurrentWord is { } entry)
+                    {
+                        Text(d, entry.Word, 31, section.Top + 3, 22, foreground, Dpi, medium: true, width: 294);
+                        Text(d, entry.Meaning, 31, section.Top + 39, 12, secondary, Dpi, width: 294);
+                    }
                     break;
                 case WidgetSection.Todo:
                     break;
@@ -231,6 +241,14 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     }
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
+        if (settings.PanelLocked) { e.Handled = true; return; }
+        var words = Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Vocabulary);
+        var mouse = e.GetPosition(this);
+        if (words is not null && mouse.Y >= words.Top && mouse.Y <= words.Top + words.Height)
+        {
+            vocabularyPage = vocabularyPager.Advance(vocabularyPage, e.Delta, settings.Vocabulary.Count, Environment.TickCount64, pageSize: 1);
+            HoverHints.Close(this); InvalidateVisual(); e.Handled = true; return;
+        }
         var point = e.GetPosition(this); var area = Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Devices);
         if (area is not null && point.Y >= area.Top && point.Y <= area.Top + area.Height && VisibleDevices.Count > 2)
         {
@@ -261,6 +279,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         }
         if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip;
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
+        if (area?.Kind == WidgetSection.Vocabulary && CurrentWord is { } word) tip = $"{word.Word}\n{word.Meaning}\n滚轮切换单词 · 双击打开设置";
         if (area?.Kind == WidgetSection.Media) tip = $"{state.Media.Title}\n{state.Media.Artist}\n{state.Media.Status}";
         if (area?.Kind == WidgetSection.Poetry) tip = state.Poetry is { } poem ? $"{poem.Content}\n{poem.Dynasty} · {poem.Author} · 《{poem.Origin}》\n{poem.Source} · {(poem.Source == "内置公版诗库" ? "选取" : "更新")} {poem.FetchedAt.ToLocalTime():MM/dd HH:mm}" + (state.PoetryFailed ? poem.Source == "内置公版诗库" ? "\n在线暂不可用，正在使用内置诗库" : "\n在线更新失败，保留已缓存诗词" : "") : "诗词尚未就绪，可在设置中刷新";
         HoverHints.Set(this, tip, System.Windows.Controls.Primitives.PlacementMode.Mouse);

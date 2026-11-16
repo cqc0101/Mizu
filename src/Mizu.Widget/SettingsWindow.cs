@@ -20,6 +20,7 @@ public sealed class SettingsWindow : Window
     private readonly StackPanel probeList = new();
     private readonly StackPanel deviceList = new();
     private readonly StackPanel todoList = new();
+    private readonly StackPanel vocabularyList = new();
     private readonly List<CheckBox> todoVisibilityToggles = [];
     private readonly List<CheckBox> poetryVisibilityToggles = [];
     private readonly CancellationTokenSource lifetime = new();
@@ -69,7 +70,7 @@ public sealed class SettingsWindow : Window
         heading.Children.Add(new TextBlock { Text = "Mizu", FontSize = 28, FontWeight = FontWeights.Light });
         heading.Children.Add(new TextBlock { Text = "偏好设置", Margin = new(1, 5, 0, 0), Foreground = theme.Brush("#8D9487"), FontSize = 12 }); root.Children.Add(heading);
         var tabs = new TabControl { Background = Brushes.Transparent, BorderThickness = new(0), TabStripPlacement = Dock.Left };
-        AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push()); AddTab(tabs, "关于", About());
+        AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push()); AddTab(tabs, "单词本", Vocabulary()); AddTab(tabs, "关于", About());
         Grid.SetRow(tabs, 1); root.Children.Add(tabs); Grid.SetRow(status, 2); root.Children.Add(status); Content = root;
         saveDelay.Tick += (_, _) => FlushPendingSave();
         Closed += (_, _) => { FlushPendingSave(); lifetime.Cancel(); lifetime.Dispose(); };
@@ -282,6 +283,53 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Label("来源：今日诗词。服务会根据来源 IP 推测地区用于推荐；手动刷新可能返回同一条缓存推荐。", true));
         return panel;
     }
+    private UIElement Vocabulary()
+    {
+        var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
+        panel.Children.Add(Toggle("在组件上显示单词本", settings.ShowVocabulary, v => { settings.ShowVocabulary = v; Save(); }));
+        panel.Children.Add(Label("记录想记住的词。组件一次显示一个，滚轮切换；空词本不占空间。", true));
+        TextBox Input(string name, int limit) {
+            var input = new TextBox { Padding = new(10), MaxLength = limit, Margin = new(0, 0, 0, 8), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
+            System.Windows.Automation.AutomationProperties.SetName(input, name); HoverHints.Set(input, name); return input;
+        }
+        panel.Children.Add(Label("单词")); var word = Input("新单词", 80); panel.Children.Add(word);
+        panel.Children.Add(Label("释义 / 笔记")); var meaning = Input("新单词释义", 200); panel.Children.Add(meaning);
+        void Add() {
+            var text = word.Text.Trim();
+            if (text.Length == 0) { status.Text = "请先输入单词"; return; }
+            if (settings.Vocabulary.Count >= 500) { status.Text = "最多保存 500 个单词"; return; }
+            if (settings.Vocabulary.Any(w => w.Word.Equals(text, StringComparison.OrdinalIgnoreCase))) { status.Text = "该单词已存在，可在下方编辑"; return; }
+            settings.Vocabulary.Add(new() { Word = text, Meaning = meaning.Text.Trim() });
+            word.Clear(); meaning.Clear(); Save(); BuildVocabularyList(); status.Text = "单词已保存"; word.Focus();
+        }
+        panel.Children.Add(ActionButton("添加单词", (_, _) => Add()));
+        meaning.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Add(); e.Handled = true; } };
+        panel.Children.Add(Label("下方可编辑单词与释义，移开焦点自动保存；关闭显示不会删除词条。数据仅保存在本机。", true));
+        panel.Children.Add(vocabularyList); BuildVocabularyList(); return panel;
+    }
+    private void BuildVocabularyList()
+    {
+        vocabularyList.Children.Clear();
+        foreach (var entry in settings.Vocabulary)
+        {
+            var row = new Grid { Margin = new(0, 6, 0, 6) }; row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = new(44) });
+            var fields = new StackPanel();
+            var word = new TextBox { Text = entry.Word, MaxLength = 80, Padding = new(8), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
+            var meaning = new TextBox { Text = entry.Meaning, MaxLength = 200, Padding = new(8), Margin = new(0, 4, 0, 0), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
+            System.Windows.Automation.AutomationProperties.SetName(word, "编辑单词");
+            System.Windows.Automation.AutomationProperties.SetName(meaning, "编辑释义");
+            word.LostKeyboardFocus += (_, _) => {
+                var text = word.Text.Trim();
+                if (text.Length == 0 || settings.Vocabulary.Any(w => w != entry && w.Word.Equals(text, StringComparison.OrdinalIgnoreCase))) { word.Text = entry.Word; return; }
+                entry.Word = text; Save();
+            };
+            meaning.LostKeyboardFocus += (_, _) => { entry.Meaning = meaning.Text.Trim(); Save(); };
+            fields.Children.Add(word); fields.Children.Add(meaning); row.Children.Add(fields);
+            var delete = ActionButton("×", (_, _) => { settings.Vocabulary.Remove(entry); Save(); BuildVocabularyList(); });
+            HoverHints.Set(delete, "删除单词"); System.Windows.Automation.AutomationProperties.SetName(delete, "删除单词");
+            Grid.SetColumn(delete, 1); row.Children.Add(delete); vocabularyList.Children.Add(row);
+        }
+    }
     private UIElement Todos()
     {
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
@@ -401,6 +449,20 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(new TextBlock { Text = "Mizu", FontSize = 36, FontWeight = FontWeights.Light, Margin = new(0, 0, 0, 8) });
         var version = typeof(App).Assembly.GetName().Version;
         panel.Children.Add(Label($"v{version?.ToString(3) ?? "—"} · 预览版 · {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}", true));
+        var history = new StackPanel();
+        using (var stream = typeof(App).Assembly.GetManifestResourceStream("Mizu.Changelog"))
+        {
+            if (stream is not null)
+            {
+                using var reader = new StreamReader(stream);
+                foreach (var line in reader.ReadToEnd().Split('\n').Select(l => l.Trim()))
+                {
+                    if (line.StartsWith("## ")) { var title = Label("v" + line[3..]); title.FontWeight = FontWeights.SemiBold; title.Margin = new(0, 14, 0, 6); history.Children.Add(title); }
+                    else if (line.StartsWith("- ")) history.Children.Add(Label("· " + line[2..], true));
+                }
+            }
+        }
+        panel.Children.Add(new Expander { Header = "版本更新记录", IsExpanded = true, Margin = new(0, 16, 0, 16), Content = new ScrollViewer { Content = history, MaxHeight = 230, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } });
         panel.Children.Add(Label("天气、键鼠电量与系统状态，安静地放在桌面一角。", true));
         panel.Children.Add(new Separator { Margin = new(0, 22, 0, 16) });
         void Open(string url)

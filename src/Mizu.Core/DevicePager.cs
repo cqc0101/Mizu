@@ -4,9 +4,9 @@ public sealed class DevicePager
 {
     private int remainder;
     private long lastEvent = long.MinValue / 2, lastTurn = long.MinValue / 2;
-    public int Advance(int page, int delta, int deviceCount, long milliseconds)
+    public int Advance(int page, int delta, int deviceCount, long milliseconds, int pageSize = 2)
     {
-        int lastPage = Math.Max(0, (deviceCount - 1) / 2);
+        int lastPage = Math.Max(0, (deviceCount - 1) / Math.Max(1, pageSize));
         page = Math.Clamp(page, 0, lastPage);
         if (delta == 0 || lastPage == 0) return page;
         if (milliseconds - lastEvent > 250 || Math.Sign(delta) != Math.Sign(remainder)) remainder = 0;

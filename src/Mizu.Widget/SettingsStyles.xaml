@@ -2,7 +2,7 @@
   <Style TargetType="TabControl">
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabControl">
       <Grid KeyboardNavigation.TabNavigation="Local"><Grid.ColumnDefinitions><ColumnDefinition Width="132"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <StackPanel IsItemsHost="True" Margin="0,6,14,0"/>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel IsItemsHost="True" Margin="0,6,14,0"/></ScrollViewer>
         <ContentPresenter Grid.Column="1" ContentSource="SelectedContent"/>
       </Grid>
     </ControlTemplate></Setter.Value></Setter>

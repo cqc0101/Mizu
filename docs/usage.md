@@ -60,6 +60,10 @@
 
 ## 数据、权限与网络
 
+设置 → 单词本：输入单词和释义，点击“添加单词”；下方可以修改或删除。开启“在组件上显示单词本”后，一次显示一个词，指针停在词条上滚轮切换。空词本不占空间，关闭显示仍保留词条；锁定面板后不能切词。最多保存 500 条，与待办一样保存在本机 settings.json。
+
+设置 → 关于：顶部显示当前版本和架构，“版本更新记录”包含随当前程序打包的更新说明。以后版本构建会自动读取版本号和 CHANGELOG.md，离线也能查看。
+
 设置保存在 `%LOCALAPPDATA%\Mizu\settings.json`，日志同目录，限制大小。PushPlus Token 使用 DPAPI / CurrentUser 加密，不能直接迁移到其他 Windows 用户。电量缓存也保存在此目录，离线旧读数最多保留 24 小时并明确置灰。诊断不含 Token、原始 HID 路径和设备序列号；包含产品名称、VID/PID、类型、当前读数和哈希标识。
 
 只有配置天气或推送时才访问对应服务：`geocoding-api.open-meteo.com`、`api.open-meteo.com`、`www.pushplus.plus`。无遥测或广告。仅在已安装 PawnIO 驱动、启用温度、具有管理员权限、x86/x64 平台时由 LibreHardwareMonitor 打开传感器；不修改系统驱动安全策略。
