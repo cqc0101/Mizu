@@ -228,7 +228,7 @@ public sealed class SettingsWindow : Window
         var orderActions = new WrapPanel();
         void Shift(int direction) { if (sectionOrderList.SelectedItem is not ListBoxItem selected || selected.Tag is not WidgetSection from) return; int index = settings.SectionOrder.IndexOf(from); int target = Math.Clamp(index + direction, 0, settings.SectionOrder.Count - 1); MoveSection(from, settings.SectionOrder[target], direction > 0); }
         orderActions.Children.Add(ActionButton("上移", (_, _) => Shift(-1))); orderActions.Children.Add(ActionButton("下移", (_, _) => Shift(1))); panel.Children.Add(orderActions);
-        panel.Children.Add(Label("设置即时生效并自动保存。关闭显示只影响组件内容，已启用的阈值提醒继续工作。内容较多时整体缩小以适应屏幕高度。", true));
+        panel.Children.Add(Label("设置即时生效并自动保存。关闭显示只影响组件内容，已启用的阈值提醒继续工作。内容较多时可手动缩小或关闭部分模块。", true));
         return panel;
     }
     private void BuildSectionOrder()
