@@ -8,7 +8,7 @@ namespace Mizu.Core.Native;
 public sealed record PnpNode(string InstanceId, string Name, string Class, string ContainerId,
     string ParentId, int? Battery, bool? Connected);
 public sealed record HidEndpoint(string Path, ushort VendorId, ushort ProductId, ushort UsagePage,
-    ushort Usage, int InputLength, int OutputLength, int FeatureLength, string Product, string ContainerId, string InstanceId);
+    ushort Usage, int InputLength, int OutputLength, int FeatureLength, string Product, string ContainerId, string InstanceId, string Manufacturer = "");
 
 public static class WindowsDevices
 {
@@ -107,9 +107,11 @@ public static class WindowsDevices
                         if (HidP_GetCaps(pp, out var caps) != 0x110000) continue;
                         var product = new byte[512];
                         var name = HidD_GetProductString(handle, product, product.Length) ? Encoding.Unicode.GetString(product).TrimEnd('\0') : "";
+                        var manufacturer = new byte[512];
+                        var maker = HidD_GetManufacturerString(handle, manufacturer, manufacturer.Length) ? Encoding.Unicode.GetString(manufacturer).TrimEnd('\0') : "";
                         var info = Marshal.PtrToStructure<DeviceInfo>(devPtr);
                         result.Add(new(path, attributes.Vendor, attributes.Product, caps.UsagePage, caps.Usage,
-                            caps.InputLength, caps.OutputLength, caps.FeatureLength, name, Container(set, ref info), Instance(set, ref info)));
+                            caps.InputLength, caps.OutputLength, caps.FeatureLength, name, Container(set, ref info), Instance(set, ref info), maker));
                     }
                     finally { HidD_FreePreparsedData(pp); }
                 }
@@ -169,6 +171,7 @@ public static class WindowsDevices
     [DllImport("hid.dll")] internal static extern bool HidD_FreePreparsedData(IntPtr data);
     [DllImport("hid.dll")] internal static extern int HidP_GetCaps(IntPtr pp, out Caps caps);
     [DllImport("hid.dll")] static extern bool HidD_GetProductString(SafeFileHandle handle, byte[] buffer, int length);
+    [DllImport("hid.dll")] static extern bool HidD_GetManufacturerString(SafeFileHandle handle, byte[] buffer, int length);
     [DllImport("hid.dll")] internal static extern bool HidD_SetFeature(SafeFileHandle handle, byte[] report, int length);
     [DllImport("hid.dll")] static extern bool HidD_GetFeature(SafeFileHandle handle, byte[] report, int length);
     [DllImport("hid.dll")] static extern int HidP_GetValueCaps(int reportType, byte[] caps, ref ushort count, IntPtr pp);

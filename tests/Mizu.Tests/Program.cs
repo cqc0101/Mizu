@@ -10,6 +10,17 @@ try {
 var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
+Check(KnownWiredKeyboardProvider.RecognizedModel("HHKB Professional", "PFU Limited")=="HHKB Professional","HHKB product descriptor is a readable model");
+foreach(var generic in new[]{"USB Keyboard","HID Keyboard Device","Gaming Keyboard","Wireless mouse 8k NANO dongle-L","HID VHF Driver","VID_0853&PID_0100"})
+    Check(KnownWiredKeyboardProvider.RecognizedModel(generic,"Generic") is null,"Generic and non-keyboard descriptions are excluded: "+generic);
+var wiredEndpoint=new Mizu.Core.Native.HidEndpoint("path",0x0853,0x0100,1,6,8,0,0,"HHKB Professional","wired-container","HID\\WIRED","PFU Limited");
+var wiredNode=new Mizu.Core.Native.PnpNode("HID\\WIRED","HID Keyboard Device","Keyboard","wired-container","USB\\VID_0853&PID_0100",null,true);
+var wiredFound=await new KnownWiredKeyboardProvider([wiredEndpoint],[wiredNode]).ScanAsync(CancellationToken.None);
+Check(wiredFound.Single().IdentifiedWiredKeyboard && wiredFound[0].Link==LinkKind.Wired && wiredFound[0].Percent is null,"Known USB keyboard is identified without inventing battery readings");
+Check((await new KnownWiredKeyboardProvider([wiredEndpoint],[wiredNode with {ParentId="ROOT\\VHF"}]).ScanAsync(CancellationToken.None)).Count==0,"Virtual parents cannot qualify as USB keyboards");
+Check((await new KnownWiredKeyboardProvider([wiredEndpoint with {Product="USB Keyboard"}],[wiredNode]).ScanAsync(CancellationToken.None)).Count==0,"Unknown USB keyboard is not added");
+var wiredMerged=BatteryService.Merge([wiredFound[0],wiredFound[0] with {IdentifiedWiredKeyboard=false,Name="HID keyboard",Percent=83,Source="Standard HID BatteryStrength"}]);
+Check(wiredMerged.Count==1 && wiredMerged[0].IdentifiedWiredKeyboard && wiredMerged[0].Percent==83 && wiredMerged[0].Name=="HHKB Professional","Standard battery readings merge with known wired identity");
 var graceDevice=new Peripheral("sleep-mouse","Sleep Mouse A9",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,80,false,"test",now);
 var presence=new PeripheralPresence();Check(presence.Update([graceDevice],now).Single().DisplayDimmed==false,"New device is visible at normal brightness");
 Check(presence.Update([graceDevice with {State=LinkState.Offline}],now.AddMinutes(14)).Single().DisplayDimmed==false,"Sleeping device retains normal display before fifteen minutes");

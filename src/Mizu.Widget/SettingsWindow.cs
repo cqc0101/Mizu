@@ -442,6 +442,8 @@ public sealed class SettingsWindow : Window
         var panel = new StackPanel { Margin = new(1, 8, 12, 0) };
         panel.Children.Add(Label("自动检测连接方式与设备类型。识别有误时可手动调整。", true));
         panel.Children.Add(Toggle("仅显示活跃外设", settings.HideInactiveDevices, v => { settings.HideInactiveDevices = v; Save(); }));
+        panel.Children.Add(Toggle("显示已识别型号的有线键盘", settings.ShowWiredKeyboards, v => { settings.ShowWiredKeyboards = v; Save(); }));
+        panel.Children.Add(Label("只显示 USB 描述中具有明确品牌型号的键盘；通用或无法确认型号的键盘、虚拟接口与接收器不显示。有线键盘无电量时显示 —。默认关闭。", true));
         panel.Children.Add(Label("外设休眠后保留显示：15 分钟无有效信号变灰，1 小时后隐藏，收到新信号后恢复。开启筛选可合并同一外设的通道；本页保留完整检测列表。", true));
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         actions.Children.Add(ActionButton("重新检测", async (_, _) => { status.Text = "检测中…"; await widget.Engine.RefreshDevicesAsync(); BuildDevices(); status.Text = "检测完成"; }));

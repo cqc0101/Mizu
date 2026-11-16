@@ -50,6 +50,11 @@ Check(pixels[((h/2)*w+w/2)*4+3]>0,"Material present");
 }
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
+var wiredUiSettings=new AppSettings();var wiredUiState=new WidgetState {Devices=[new Peripheral("wired-test","HHKB Professional",PeripheralKind.Keyboard,LinkKind.Wired,LinkState.Online,null,null,"test",DateTimeOffset.UtcNow){IdentifiedWiredKeyboard=true}]};
+var wiredSurface=new WidgetSurface(wiredUiState,wiredUiSettings);
+Check(wiredSurface.VisibleDevices.Count==0,"Recognized wired keyboards remain hidden when independent switch is off");
+wiredUiSettings.ShowWiredKeyboards=true;Check(wiredSurface.VisibleDevices.Single().Name=="HHKB Professional" && wiredSurface.Layout.Sections.Single(s=>s.Kind==WidgetSection.Devices).Height==78,"Independent wired switch adds one readable keyboard row");
+wiredUiSettings.ShowWiredKeyboards=false;Check(wiredSurface.VisibleDevices.Count==0,"Disabling wired switch immediately removes its row despite sleep history");
 var rowDevice=new Peripheral("row-mouse","Mouse A9",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,70,false,"test",DateTimeOffset.UtcNow);
 var rowState=new WidgetState {Devices=[rowDevice]};
 var rowWindow=new MainWindow(new AppSettings {ShowWeather=false,ShowCpu=false,ShowMemory=false,ShowTemperature=false,HideInactiveDevices=true},rowState,preview:true,persistSettings:false);

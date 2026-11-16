@@ -43,6 +43,7 @@ public sealed class AppSettings
     public bool VocabularyHideMeaning { get; set; }
     public int VocabularySpacing { get; set; } = 8;
     public bool HideInactiveDevices { get; set; }
+    public bool ShowWiredKeyboards { get; set; }
     public List<WidgetSection> SectionOrder { get; set; } = [WidgetSection.Clock, WidgetSection.Weather, WidgetSection.Devices, WidgetSection.Metrics, WidgetSection.Network, WidgetSection.Media, WidgetSection.Poetry, WidgetSection.Vocabulary, WidgetSection.Todo];
     public List<VocabularyEntry> Vocabulary { get; set; } = [];
     public bool ShowGraphs { get; set; } = true;

@@ -26,7 +26,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     {
         get
         {
-            var candidates = presence.Update(state.Devices, DateTimeOffset.UtcNow).Where(d => !settings.HiddenDevices.Contains(d.Id)).ToArray();
+            var candidates = presence.Update(state.Devices, DateTimeOffset.UtcNow).Where(d => !settings.HiddenDevices.Contains(d.Id) && (!d.IdentifiedWiredKeyboard || settings.ShowWiredKeyboards)).ToArray();
             var active = settings.HideInactiveDevices ? ActivePeripheralFilter.Select(candidates, requireOnline: false) : candidates;
             var visible = active.Select(d => d with
     { Name = settings.NameOverrides.GetValueOrDefault(d.Id, d.Name), Kind = settings.TypeOverrides.GetValueOrDefault(d.Id, d.Kind) })

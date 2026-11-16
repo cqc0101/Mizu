@@ -37,7 +37,7 @@ public sealed class BatteryService
                 candidates.Add(previous with { State = LinkState.Offline, Detail = "上次读数，当前连接未确认" });
         var links = BluetoothLinks;
         candidates = candidates.Select(device => {
-            if (device.Link is LinkKind.Unknown or LinkKind.Wired && !string.IsNullOrWhiteSpace(device.ContainerId) &&
+            if (!device.IdentifiedWiredKeyboard && (device.Link is LinkKind.Unknown or LinkKind.Wired) && !string.IsNullOrWhiteSpace(device.ContainerId) &&
                 candidates.Any(d => d.ContainerId == device.ContainerId && d.Link == LinkKind.Bluetooth)) device = device with { Link = LinkKind.Bluetooth };
             if (device.Link != LinkKind.Bluetooth) return device;
             var address = device.BluetoothAddress ?? candidates.FirstOrDefault(d => !string.IsNullOrWhiteSpace(device.ContainerId) && d.ContainerId == device.ContainerId && d.BluetoothAddress is not null)?.BluetoothAddress;
@@ -55,6 +55,7 @@ public sealed class BatteryService
     public async Task<IReadOnlyList<Peripheral>> RefreshFastAsync(CancellationToken token, Action<IReadOnlyList<Peripheral>>? progress = null)
     {
         var nodes = WindowsDevices.EnumeratePnp(token); var endpoints = WindowsDevices.EnumerateHid(token);
+        Apply("wired-keyboards", await new KnownWiredKeyboardProvider(endpoints, nodes).ScanAsync(token), progress);
         Apply("windows", await new WindowsBatteryProvider(nodes, endpoints, BluetoothLinks).ScanAsync(token), progress);
         if (await atkGate.WaitAsync(0, token))
         {
@@ -71,6 +72,7 @@ public sealed class BatteryService
             var notes = new System.Collections.Concurrent.ConcurrentBag<string>();
             var nodes = WindowsDevices.EnumeratePnp(token);
             var endpoints = WindowsDevices.EnumerateHid(token); Endpoints = endpoints;
+            Apply("wired-keyboards", await new KnownWiredKeyboardProvider(endpoints, nodes).ScanAsync(token), progress);
             Apply("windows", await new WindowsBatteryProvider(nodes, endpoints, BluetoothLinks).ScanAsync(token), progress);
             async Task Run(string key, IBatteryProvider provider, SemaphoreSlim? transportGate = null)
             {
@@ -96,8 +98,12 @@ public sealed class BatteryService
     }
     public static List<Peripheral> Merge(IEnumerable<Peripheral> devices) => devices
         .GroupBy(d => !string.IsNullOrEmpty(d.ContainerId) && d.ContainerId != Guid.Empty.ToString() ? "container:" + d.ContainerId + ":" + d.Kind : d.Id)
-        .Select(g => g.OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.Source.Contains("HID++") || d.Source.StartsWith("ATK"))
-            .ThenByDescending(d => d.ObservedAt).First()).OrderBy(d => d.Kind).ThenBy(d => d.Name).ToList();
+        .Select(g => {
+            var best = g.OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.Source.Contains("HID++") || d.Source.StartsWith("ATK"))
+                .ThenByDescending(d => d.Percent.HasValue).ThenByDescending(d => d.ObservedAt).First();
+            var wired = g.FirstOrDefault(d => d.IdentifiedWiredKeyboard && d.State == LinkState.Online);
+            return wired is null ? best : best with { Name = wired.Name, Kind = PeripheralKind.Keyboard, Link = LinkKind.Wired, IdentifiedWiredKeyboard = true };
+        }).OrderBy(d => d.Kind).ThenBy(d => d.Name).ToList();
     public DiscoveryReport Report(IReadOnlyList<Peripheral> devices) => new(DateTimeOffset.Now, devices, Endpoints.Select(e => (object)new
     {
         Id = DeviceIdentity.Hash(e.InstanceId), e.VendorId, e.ProductId, e.UsagePage, e.Usage, e.Product,
