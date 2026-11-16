@@ -192,7 +192,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         var devices = VisibleDevices; var pages = Math.Max(1, (int)Math.Ceiling(devices.Count / 2.0));
         state.DevicePage = Math.Clamp(state.DevicePage, 0, pages - 1);
         var current = devices.Skip(state.DevicePage * 2).Take(2).ToArray();
-        for (int row = 0; row < 2; row++)
+        for (int row = 0; row < (settings.HideInactiveDevices ? current.Length : 2); row++)
         {
             double y = top + row * (settings.CompactMode ? 56 : 78);
             var peripheral = row < current.Length ? current[row] : null;
