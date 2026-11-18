@@ -54,6 +54,18 @@ Check(pixels[((h/2)*w+w/2)*4+3]>0,"Material present");
 }
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
+var gpuSettings = new AppSettings { ShowWeather = false, ShowDevices = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false };
+var gpuState = new WidgetState { GpuMemory = new GpuMemorySnapshot(400 * 1048576L, null, 4 * 1073741824L, "NVIDIA") };
+var gpuSurface = new WidgetSurface(gpuState, gpuSettings) { Width = 356 };
+Check(!gpuSurface.Layout.Sections.Any(s => s.Kind == WidgetSection.GpuMemory), "GPU memory remains hidden by default");
+gpuSettings.ShowGpuMemory = true;
+gpuSurface.Height = gpuSurface.Layout.Height;
+gpuSurface.Measure(new Size(356, gpuSurface.Height)); gpuSurface.Arrange(new Rect(0, 0, 356, gpuSurface.Height));
+Capture(gpuSurface);
+var gpuText = string.Concat(DrawingText(VisualTreeHelper.GetDrawing(gpuSurface)));
+Check(gpuSurface.Layout.Sections.Single().Kind == WidgetSection.GpuMemory &&
+    gpuText.Contains("400 MB") && gpuText.Contains("4.0 GB") && gpuText.Contains("共享内存") && gpuText.Contains("—"),
+    "GPU memory can render independently and uses an explicit placeholder for unsupported shared memory");
 var wiredUiSettings=new AppSettings();var wiredUiState=new WidgetState {Devices=[new Peripheral("wired-test","HHKB Professional",PeripheralKind.Keyboard,LinkKind.Wired,LinkState.Online,null,null,"test",DateTimeOffset.UtcNow){IdentifiedWiredKeyboard=true}]};
 var wiredSurface=new WidgetSurface(wiredUiState,wiredUiSettings);
 Check(wiredSurface.VisibleDevices.Count==0,"Recognized wired keyboards remain hidden when independent switch is off");
@@ -283,15 +295,16 @@ typeof(SettingsWindow).GetMethod("MoveSection",BindingFlags.NonPublic|BindingFla
 Check(main.Settings.SectionOrder.IndexOf(WidgetSection.Vocabulary)<main.Settings.SectionOrder.IndexOf(WidgetSection.Weather),"Reordering settings updates the persisted module order");
 Pump(230);
 var orderBefore=main.Settings.SectionOrder.ToArray();var dragKind=orderBefore[0];
+var lastOrderSlot=orderBefore.Length - 1;
 var orderList=Desc<ListBox>(dialog).Single();
 typeof(SettingsWindow).GetMethod("BeginOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind]);
-typeof(SettingsWindow).GetMethod("PreviewSectionOrder",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind,8]);
-Check(main.Settings.SectionOrder.SequenceEqual(orderBefore) && Equals(((ListBoxItem)orderList.Items[8]).Tag,dragKind),"Drag preview changes visible order without saving settings");
+typeof(SettingsWindow).GetMethod("PreviewSectionOrder",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind,lastOrderSlot]);
+Check(main.Settings.SectionOrder.SequenceEqual(orderBefore) && Equals(((ListBoxItem)orderList.Items[lastOrderSlot]).Tag,dragKind),"Drag preview changes visible order without saving settings");
 Check(orderList.Items.Cast<ListBoxItem>().Any(row=>row.RenderTransform is TranslateTransform offset && offset.HasAnimatedProperties),"Displaced sorting rows have movement animations");
 typeof(SettingsWindow).GetMethod("FinishOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[false]);Pump(230);
 Check(orderList.Items.Cast<ListBoxItem>().Select(row=>(WidgetSection)row.Tag).SequenceEqual(orderBefore),"Cancel restores original order");
 typeof(SettingsWindow).GetMethod("BeginOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind]);
-typeof(SettingsWindow).GetMethod("PreviewSectionOrder",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind,8]);
+typeof(SettingsWindow).GetMethod("PreviewSectionOrder",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[dragKind,lastOrderSlot]);
 typeof(SettingsWindow).GetMethod("FinishOrderPreview",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(dialog,[true]);Pump(330);
 Check(main.Settings.SectionOrder.Last()==dragKind,"Drop commits previewed order");
 Check(!main.Surface.TargetLayout.Sections.Any(s => s.Kind == WidgetSection.Todo), "Empty todo has no body section or reserved footer");

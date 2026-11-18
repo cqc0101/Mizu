@@ -24,6 +24,7 @@ public sealed class AppSettings
     public bool ShowCpu { get; set; } = true;
     public bool ShowMemory { get; set; } = true;
     public bool ShowTemperature { get; set; } = true;
+    public bool ShowGpuMemory { get; set; }
     public bool ShowNetwork { get; set; }
     public bool ShowMedia { get; set; }
     public List<string>? NetworkProbeTargets { get; set; }
@@ -44,7 +45,7 @@ public sealed class AppSettings
     public int VocabularySpacing { get; set; } = 8;
     public bool HideInactiveDevices { get; set; }
     public bool ShowWiredKeyboards { get; set; }
-    public List<WidgetSection> SectionOrder { get; set; } = [WidgetSection.Clock, WidgetSection.Weather, WidgetSection.Devices, WidgetSection.Metrics, WidgetSection.Network, WidgetSection.Media, WidgetSection.Poetry, WidgetSection.Vocabulary, WidgetSection.Todo];
+    public List<WidgetSection> SectionOrder { get; set; } = [WidgetSection.Clock, WidgetSection.Weather, WidgetSection.Devices, WidgetSection.Metrics, WidgetSection.GpuMemory, WidgetSection.Network, WidgetSection.Media, WidgetSection.Poetry, WidgetSection.Vocabulary, WidgetSection.Todo];
     public List<VocabularyEntry> Vocabulary { get; set; } = [];
     public bool ShowGraphs { get; set; } = true;
     public bool ShowConnectionIcons { get; set; } = true;

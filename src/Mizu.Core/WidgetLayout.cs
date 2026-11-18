@@ -2,7 +2,7 @@ using Mizu.Core.Services;
 
 namespace Mizu.Core;
 
-public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, Todo, Vocabulary, Clock }
+public enum WidgetSection { Weather, Devices, Metrics, Network, Media, Poetry, Todo, Vocabulary, Clock, GpuMemory }
 public sealed record SectionLayout(WidgetSection Kind, double Top, double Height)
 {
     public double Opacity { get; init; } = 1;
@@ -79,6 +79,7 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         }
         if (s.ShowDevices) Add(WidgetSection.Devices, Math.Clamp(deviceCount, 0, 2) * (s.CompactMode ? 56 : 78));
         if (s.ShowCpu || s.ShowMemory || s.ShowTemperature) Add(WidgetSection.Metrics, s.CompactMode || !s.ShowGraphs ? 52 : 84);
+        if (s.ShowGpuMemory) Add(WidgetSection.GpuMemory, 56);
         if (s.ShowNetwork) Add(WidgetSection.Network, 60 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 52 : 32));
         if (s.ShowMedia) Add(WidgetSection.Media, 104);
         if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);

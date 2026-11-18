@@ -95,6 +95,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                 case WidgetSection.Weather: DrawWeatherTransition(d, section); break;
                 case WidgetSection.Devices: DrawDevices(d, section.Top); break;
                 case WidgetSection.Metrics: DrawMetrics(d, section.Top); break;
+                case WidgetSection.GpuMemory: DrawGpuMemory(d, section.Top); break;
                 case WidgetSection.Network: DrawNetwork(d, section.Top); break;
                 case WidgetSection.Media:
                     Art.Icon(d, "music", 31, section.Top + 4, 24, secondary);
@@ -129,6 +130,22 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         }
         d.Pop();
     }
+    private void DrawGpuMemory(DrawingContext d, double top)
+    {
+        var memory = state.GpuMemory;
+        Text(d, "专用显存", 30, top, 11, secondary, Dpi, width: 145);
+        var used = FormatGpuMemory(memory?.DedicatedBytes);
+        var dedicated = memory?.DedicatedCapacityBytes is { } capacity ? $"{used} / {FormatGpuMemory(capacity)}" : used;
+        Text(d, dedicated, 30, top + 21, 16, foreground, Dpi, width: 145);
+        Text(d, "共享内存", 185, top, 11, secondary, Dpi, width: 141);
+        Text(d, FormatGpuMemory(memory?.SharedBytes), 185, top + 21, 16, foreground, Dpi, width: 141);
+    }
+    private static string FormatGpuMemory(long? bytes) => bytes switch
+    {
+        null => "—",
+        < 1073741824 => $"{bytes.Value / 1048576d:0} MB",
+        _ => $"{bytes.Value / 1073741824d:0.0} GB"
+    };
     private void DrawNetwork(DrawingContext d, double y)
     {
         var n = state.Network;
@@ -346,6 +363,8 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             if (devices.Count > 2) tip += "\n滚轮切换设备";
         }
         if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip;
+        if (area?.Kind == WidgetSection.GpuMemory)
+            tip = state.GpuMemory is { } gpu ? $"{gpu.Source}\n专用显存 {FormatGpuMemory(gpu.DedicatedBytes)}\n共享内存 {FormatGpuMemory(gpu.SharedBytes)}" : "暂时无法读取显卡内存占用";
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
         if (area?.Kind == WidgetSection.Vocabulary) {
             var row = (int)((p.Y - area.Top) / WidgetLayout.VocabularyRowHeight(settings));

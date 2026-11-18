@@ -237,7 +237,7 @@ try
     var store = new SettingsStore(Path.Combine(temp, "settings.json"));
     var customOrder=new AppSettings {Scale=.4,ShowClock=true,HideInactiveDevices=true,VocabularySpacing=0,SectionOrder=[WidgetSection.Vocabulary,WidgetSection.Clock,WidgetSection.Vocabulary,(WidgetSection)999]};
     store.Save(customOrder);var ordered=store.Load();
-    Check(ordered.SectionOrder.Count==9 && ordered.SectionOrder[0]==WidgetSection.Vocabulary && ordered.SectionOrder.Distinct().Count()==9,"Custom order reloads, drops invalid duplicates and appends missing modules");
+    Check(ordered.SectionOrder.Count==Enum.GetValues<WidgetSection>().Length && ordered.SectionOrder[0]==WidgetSection.Vocabulary && ordered.SectionOrder.Distinct().Count()==ordered.SectionOrder.Count,"Custom order reloads, drops invalid duplicates and appends missing modules");
     Check(ordered.Scale==.4 && ordered.HideInactiveDevices && ordered.VocabularySpacing==0,"Small scale, activity filter and tight spacing survive disk reload");
     ordered.Vocabulary=[new(){Word="first"},new(){Word="second"}];ordered.ShowVocabulary=true;ordered.ShowClock=true;
     Check(WidgetLayout.Calculate(ordered).Sections[0].Kind==WidgetSection.Vocabulary,"Custom module order affects actual widget geometry");

@@ -10,6 +10,7 @@ public sealed class WidgetState
     public NetworkSnapshot? Network { get; set; }
     public MediaSnapshot Media { get; set; } = MediaSnapshot.Empty();
     public SystemSnapshot System { get; set; } = new(null, null, null, "");
+    public GpuMemorySnapshot? GpuMemory { get; set; }
     public IReadOnlyList<Peripheral> Devices { get; set; } = [];
     public WeatherSnapshot? Weather { get; set; }
     public bool WeatherCached { get; set; }
@@ -67,7 +68,7 @@ public sealed class WidgetEngine(AppSettings settings, WidgetState state, Action
     {
         if (Interlocked.Exchange(ref started, 1) != 0) return;
         bluetooth = new BluetoothMonitor(RequestConnectionRefresh); bluetooth.Start();
-        tasks = [Task.Run(SampleLoop), Task.Run(DeviceLoop), Task.Run(WeatherLoop), Task.Run(NetworkLoop), Task.Run(MediaLoop), Task.Run(PoetryLoop), Task.Run(ConnectionLoop)];
+        tasks = [Task.Run(SampleLoop), Task.Run(DeviceLoop), Task.Run(WeatherLoop), Task.Run(NetworkLoop), Task.Run(MediaLoop), Task.Run(PoetryLoop), Task.Run(ConnectionLoop), Task.Run(GpuMemoryLoop)];
     }
     private void PublishDevices(IReadOnlyList<Peripheral> ignored)
     {
@@ -177,6 +178,36 @@ public sealed class WidgetEngine(AppSettings settings, WidgetState state, Action
         if (!settings.ShowMedia) return;
         try { if (!await Media.CommandAsync(command, stop.Token)) AppLog.Write("media.command", "Player did not accept command"); }
         catch (Exception ex) { AppLog.Write("media.command", ex.GetType().Name); }
+    }
+    private async Task GpuMemoryLoop()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        GpuMemoryReader? reader = null;
+        try
+        {
+            do
+            {
+                if (!settings.ShowGpuMemory)
+                {
+                    if (reader is null) continue;
+                    reader.Dispose();
+                    reader = null;
+                    await Application.Current.Dispatcher.InvokeAsync(() => state.GpuMemory = null);
+                    continue;
+                }
+                reader ??= new GpuMemoryReader();
+                var result = await reader.SampleAsync(stop.Token);
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (!settings.ShowGpuMemory || state.GpuMemory == result) return;
+                    state.GpuMemory = result;
+                    changed();
+                });
+            } while (await timer.WaitForNextTickAsync(stop.Token));
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        catch (Exception ex) { AppLog.Write("gpu-memory", ex.GetType().Name); }
+        finally { reader?.Dispose(); }
     }
     private async Task SampleLoop()
     {

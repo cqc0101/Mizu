@@ -185,6 +185,7 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Toggle("CPU 负载", settings.ShowCpu, v => { settings.ShowCpu = v; Save(); }));
         panel.Children.Add(Toggle("内存占用", settings.ShowMemory, v => { settings.ShowMemory = v; Save(); }));
         panel.Children.Add(Toggle("CPU 温度", settings.ShowTemperature, v => { settings.ShowTemperature = v; Save(); }));
+        panel.Children.Add(Toggle("显卡显存占用", settings.ShowGpuMemory, v => { settings.ShowGpuMemory = v; Save(); }));
         panel.Children.Add(Toggle("网络状态与上下行", settings.ShowNetwork, v => { settings.ShowNetwork = v; Save(); }));
         panel.Children.Add(Label("显示当前活动网卡速率。开启后每 2 秒 ICMP 探测一次；丢包率为最近 60 次到目标的探测失败比例，不代表所有网络流量。", true));
         panel.Children.Add(Toggle("在组件显示探测 IP", settings.ShowNetworkProbeIp, v => { settings.ShowNetworkProbeIp = v; Save(); }));
@@ -256,7 +257,7 @@ public sealed class SettingsWindow : Window
     {
         sectionOrderList.Items.Clear();
         foreach (var kind in settings.SectionOrder) {
-            var name = kind switch { WidgetSection.Clock => "时间", WidgetSection.Weather => "天气", WidgetSection.Devices => "外设电量", WidgetSection.Metrics => "系统负载与温度", WidgetSection.Network => "网络", WidgetSection.Media => "音乐", WidgetSection.Poetry => "诗词", WidgetSection.Vocabulary => "单词本", _ => "待办" };
+            var name = kind switch { WidgetSection.Clock => "时间", WidgetSection.Weather => "天气", WidgetSection.Devices => "外设电量", WidgetSection.Metrics => "系统负载与温度", WidgetSection.GpuMemory => "显卡显存", WidgetSection.Network => "网络", WidgetSection.Media => "音乐", WidgetSection.Poetry => "诗词", WidgetSection.Vocabulary => "单词本", _ => "待办" };
             sectionOrderList.Items.Add(new ListBoxItem { Tag = kind, Content = "☰   " + name, Height = 40, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new(12, 8, 12, 8), Foreground = theme.Brush("#434B3E") });
         }
     }
