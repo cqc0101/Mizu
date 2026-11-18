@@ -16,7 +16,7 @@ public sealed class BatteryService
         try
         {
             last = (System.Text.Json.JsonSerializer.Deserialize<Peripheral[]>(File.ReadAllText(this.cachePath)) ?? [])
-                .Where(d => d.ObservedAt is { } at && DateTimeOffset.UtcNow - at < TimeSpan.FromHours(24))
+                .Where(d => d.LastSignalAt is { } at && DateTimeOffset.UtcNow - at < TimeSpan.FromHours(24))
                 .Select(d => d with { State = LinkState.Offline, Detail = "上次读数，等待设备回复" }).ToArray();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { }
@@ -33,7 +33,7 @@ public sealed class BatteryService
         var now = DateTimeOffset.UtcNow;
         var candidates = parts.Values.SelectMany(x => x).ToList();
         foreach (var previous in last)
-            if (!candidates.Any(d => d.Id == previous.Id) && previous.ObservedAt is { } at && now >= at && now - at < TimeSpan.FromHours(24))
+            if (!candidates.Any(d => d.Id == previous.Id) && previous.LastSignalAt is { } at && now >= at && now - at < TimeSpan.FromHours(24))
                 candidates.Add(previous with { State = LinkState.Offline, Detail = "上次读数，当前连接未确认" });
         var links = BluetoothLinks;
         candidates = candidates.Select(device => {
@@ -88,7 +88,7 @@ public sealed class BatteryService
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
-                File.WriteAllText(cachePath + ".tmp", System.Text.Json.JsonSerializer.Serialize(current.Where(d => d.ObservedAt is not null)));
+                File.WriteAllText(cachePath + ".tmp", System.Text.Json.JsonSerializer.Serialize(current.Where(d => d.LastSignalAt is not null)));
                 File.Move(cachePath + ".tmp", cachePath, true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AppLog.Write("battery.cache", ex.GetType().Name); }
@@ -101,6 +101,7 @@ public sealed class BatteryService
         .Select(g => {
             var best = g.OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.Source.Contains("HID++") || d.Source.StartsWith("ATK"))
                 .ThenByDescending(d => d.Percent.HasValue).ThenByDescending(d => d.ObservedAt).First();
+            best = best with { ConnectionObservedAt = g.Max(d => d.ConnectionObservedAt) };
             var wired = g.FirstOrDefault(d => d.IdentifiedWiredKeyboard && d.State == LinkState.Online);
             return wired is null ? best : best with { Name = wired.Name, Kind = PeripheralKind.Keyboard, Link = LinkKind.Wired, IdentifiedWiredKeyboard = true };
         }).OrderBy(d => d.Kind).ThenBy(d => d.Name).ToList();

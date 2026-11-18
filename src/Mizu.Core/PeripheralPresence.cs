@@ -10,7 +10,7 @@ public sealed class PeripheralPresence
         foreach (var device in snapshot)
         {
             bool known = history.TryGetValue(device.Id, out var previous);
-            DateTimeOffset? signal = device.ObservedAt is { } observed && observed <= now ? observed : null;
+            DateTimeOffset? signal = device.LastSignalAt is { } observed && observed <= now ? observed : null;
             if (signal is null && device.State == LinkState.Online && (!known || previous.Device.State != LinkState.Online || !present.Contains(device.Id))) signal = now;
             if (known && (signal is null || signal < previous.Signal)) signal = previous.Signal;
             if (signal is { } last) history[device.Id] = (device, last);

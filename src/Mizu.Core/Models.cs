@@ -17,6 +17,11 @@ public sealed record Peripheral(
     [JsonIgnore] public string? BluetoothAddress { get; init; }
     [JsonIgnore] public bool? DisplayDimmed { get; init; }
     public bool IdentifiedWiredKeyboard { get; init; }
+    // A confirmed connection is independent of the age of its battery reading.
+    public DateTimeOffset? ConnectionObservedAt { get; init; }
+    [JsonIgnore] public DateTimeOffset? LastSignalAt =>
+        ConnectionObservedAt is { } connection && (ObservedAt is null || connection > ObservedAt)
+            ? connection : ObservedAt;
     public bool IsFresh(DateTimeOffset now) => ObservedAt is { } at && now >= at && now - at < TimeSpan.FromMinutes(3);
 }
 

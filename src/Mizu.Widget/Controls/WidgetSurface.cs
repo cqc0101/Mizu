@@ -78,6 +78,13 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         for (int i = 0; i < layout.Sections.Length; i++)
         {
             var section = layout.Sections[i];
+            if (section.Opacity <= 0 || section.Height <= 0) continue;
+            bool transitioning = TransitionLayout is not null;
+            if (transitioning)
+            {
+                d.PushOpacity(section.Opacity);
+                d.PushClip(new RectangleGeometry(new Rect(0, section.Top - 15, SurfaceWidth, section.Height + 15)));
+            }
             if (i > 0 && !(section.Kind == WidgetSection.Todo && !settings.Todos.Any(t => !settings.HideCompletedTodos || !t.Completed))) Art.Line(d, Art.Pen(line, .8), 29, section.Top - 8, 327, section.Top - 8);
             switch (section.Kind)
             {
@@ -115,6 +122,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                 case WidgetSection.Todo:
                     break;
             }
+            if (transitioning) { d.Pop(); d.Pop(); }
         }
         if ((settings.ShowTodo || settings.ShowVocabulary) && FooterReveal > 0) {
             d.PushOpacity(FooterReveal); Art.Line(d, Art.Pen(line, .7), 31, layout.Height - 12, 325, layout.Height - 12); d.Pop();
@@ -143,6 +151,15 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     private static string Speed(double? value) => value is not { } v ? "—" : v >= 1048576 ? $"{v / 1048576:0.0} MiB/s" : $"{v / 1024:0.0} KiB/s";
     private void DrawWeatherTransition(DrawingContext d, SectionLayout section)
     {
+        bool configured = settings.ShowWeather && (settings.WeatherCurrent || settings.WeatherTodayRange || settings.WeatherHourly || settings.WeatherDaily);
+        if (!configured)
+        {
+            if (weatherFrame is null) return;
+            d.PushTransform(new TranslateTransform(0, section.Top));
+            d.DrawDrawing(weatherFrame);
+            d.Pop();
+            return;
+        }
         var key = $"{settings.WeatherCurrent}|{settings.WeatherTodayRange}|{settings.WeatherHourly}|{settings.WeatherDaily}|{settings.ForecastHours}|{settings.ForecastDays}|{settings.HourStep}|{settings.HourlyIncludeCurrent}|{settings.CompactMode}";
         if (key != weatherConfiguration)
         {

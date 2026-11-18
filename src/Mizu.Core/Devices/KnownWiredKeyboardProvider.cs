@@ -32,8 +32,8 @@ public sealed class KnownWiredKeyboardProvider(IReadOnlyList<HidEndpoint> endpoi
             if (endpoints.Any(e => DeviceIdentity.Physical(e) == DeviceIdentity.Physical(endpoint) &&
                 (e.Product.Contains("receiver", StringComparison.OrdinalIgnoreCase) || e.Product.Contains("dongle", StringComparison.OrdinalIgnoreCase)))) continue;
             results.Add(new Peripheral("hid:" + DeviceIdentity.Hash(DeviceIdentity.Physical(endpoint)), model, PeripheralKind.Keyboard,
-                LinkKind.Wired, LinkState.Online, null, null, Name, DateTimeOffset.UtcNow, endpoint.ContainerId,
-                "USB 产品描述提供型号；有线键盘不提供电量") { IdentifiedWiredKeyboard = true });
+                LinkKind.Wired, LinkState.Online, null, null, Name, null, endpoint.ContainerId,
+                "USB 产品描述提供型号；有线键盘不提供电量") { IdentifiedWiredKeyboard = true, ConnectionObservedAt = DateTimeOffset.UtcNow });
         }
         return Task.FromResult<IReadOnlyList<Peripheral>>(results.DistinctBy(d => d.Id).ToArray());
     }

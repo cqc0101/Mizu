@@ -21,6 +21,25 @@ Check((await new KnownWiredKeyboardProvider([wiredEndpoint],[wiredNode with {Par
 Check((await new KnownWiredKeyboardProvider([wiredEndpoint with {Product="USB Keyboard"}],[wiredNode]).ScanAsync(CancellationToken.None)).Count==0,"Unknown USB keyboard is not added");
 var wiredMerged=BatteryService.Merge([wiredFound[0],wiredFound[0] with {IdentifiedWiredKeyboard=false,Name="HID keyboard",Percent=83,Source="Standard HID BatteryStrength"}]);
 Check(wiredMerged.Count==1 && wiredMerged[0].IdentifiedWiredKeyboard && wiredMerged[0].Percent==83 && wiredMerged[0].Name=="HHKB Professional","Standard battery readings merge with known wired identity");
+var oldBattery = wiredFound[0] with { IdentifiedWiredKeyboard = false, Percent = 15, ConnectionObservedAt = null, ObservedAt = now.AddHours(-2) };
+var freshWired = wiredFound[0] with { ConnectionObservedAt = now };
+var mergedWired = BatteryService.Merge([freshWired, oldBattery]).Single();
+Check(mergedWired.LastSignalAt == now && new PeripheralPresence().Update([mergedWired], now).Single().DisplayDimmed == false,
+    "A current USB connection stays visible when merged with a two-hour-old battery reading");
+Check(mergedWired.ObservedAt == oldBattery.ObservedAt && !mergedWired.IsFresh(now), "USB connection does not refresh a stale battery reading");
+var radioOnly = new WindowsBatteryProvider([], [], [new BluetoothLink("key", "Bluetooth Keyboard", null, null, true, PeripheralKind.Keyboard)]);
+var connectedKeyboard = (await radioOnly.ScanAsync(default)).Single();
+Check(connectedKeyboard.ConnectionObservedAt is not null && connectedKeyboard.ObservedAt is null, "Bluetooth connection without battery carries connection evidence only");
+var connectionTracker = new PeripheralPresence();
+for (int minute = 0; minute <= 61; minute++)
+{
+    var time = now.AddMinutes(minute);
+    var current = connectionTracker.Update([connectedKeyboard with { ConnectionObservedAt = time }], time);
+    Check(current.Single().DisplayDimmed == false, "Repeated confirmed Bluetooth connections stay visible and bright");
+}
+var lastConnection = now.AddMinutes(61);
+Check(connectionTracker.Update([], lastConnection.AddMinutes(15)).Single().DisplayDimmed == true, "Bluetooth gray timer starts at last confirmed connection");
+Check(connectionTracker.Update([], lastConnection.AddHours(1)).Count == 0, "Bluetooth disappears an hour after confirmations stop");
 var graceDevice=new Peripheral("sleep-mouse","Sleep Mouse A9",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,80,false,"test",now);
 var presence=new PeripheralPresence();Check(presence.Update([graceDevice],now).Single().DisplayDimmed==false,"New device is visible at normal brightness");
 Check(presence.Update([graceDevice with {State=LinkState.Offline}],now.AddMinutes(14)).Single().DisplayDimmed==false,"Sleeping device retains normal display before fifteen minutes");

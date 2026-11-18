@@ -70,7 +70,31 @@ weatherSettings.WeatherHourly=true;weatherSettings.ForecastHours=10;weatherWindo
 Check(weatherWindow.VisualContent.Height>weatherHeight && weatherWindow.VisualContent.Height<weatherHeight+120,"Weather expansion has intermediate heights");
 Check((double)weatherWindow.Surface.GetValue(WidgetSurface.WeatherProgressProperty)>0 && (double)weatherWindow.Surface.GetValue(WidgetSurface.WeatherProgressProperty)<1,"Weather content crossfades during geometry transition");
 weatherSettings.WeatherHourly=false;weatherSettings.WeatherDaily=true;weatherSettings.ForecastDays=4;weatherWindow.ApplySettings();Pump(350);
-Check(Math.Abs(weatherWindow.VisualContent.Height-WidgetLayout.Calculate(weatherSettings,0).Height)<.1 && Math.Abs(weatherWindow.Width-356)<.1,"Interrupted weather switching settles at latest layout without changing scale");weatherWindow.Hide();
+Check(Math.Abs(weatherWindow.VisualContent.Height-WidgetLayout.Calculate(weatherSettings,0).Height)<.1 && Math.Abs(weatherWindow.Width-356)<.1,"Interrupted weather switching settles at latest layout without changing scale");
+var expandedWeatherHeight = weatherWindow.VisualContent.Height;
+weatherSettings.ShowWeather = false; weatherWindow.ApplySettings(); Pump(85);
+var fadingWeather = weatherWindow.Surface.Layout.Sections.Single(s => s.Kind == WidgetSection.Weather);
+Check(fadingWeather.Opacity is > 0 and < 1 && fadingWeather.Height > 0 && weatherWindow.VisualContent.Height < expandedWeatherHeight,
+    "Turning weather off keeps its content in the fading frame while the panel shrinks");
+Check(DrawingText(VisualTreeHelper.GetDrawing(weatherWindow.Surface)).Any(t => t.Contains("°")), "Outgoing weather temperature remains drawn while fading");
+Pump(320);
+Check(!weatherWindow.Surface.Layout.Sections.Any(s => s.Kind == WidgetSection.Weather), "Weather is removed at the end of the transition");
+weatherSettings.ShowWeather = weatherSettings.ShowClock = true; weatherWindow.ApplySettings(); Pump(330);
+weatherSettings.SectionOrder.Remove(WidgetSection.Clock);
+weatherSettings.SectionOrder.Insert(weatherSettings.SectionOrder.IndexOf(WidgetSection.Weather) + 1, WidgetSection.Clock);
+weatherWindow.ApplySettings();
+bool reorderingWithoutOverlap = true, sawFade = false;
+for (int i = 0; i < 10; i++)
+{
+    Pump(27);
+    var frame = weatherWindow.Surface.Layout.Sections.Where(s => s.Opacity > .001).OrderBy(s => s.Top).ToArray();
+    reorderingWithoutOverlap &= frame.Zip(frame.Skip(1)).All(pair => pair.First.Top + pair.First.Height <= pair.Second.Top + .01);
+    sawFade |= frame.Any(s => s.Opacity is > .001 and < .999);
+}
+Check(reorderingWithoutOverlap && sawFade, "Module order transition fades without letting visible rows overlap");
+Pump(100);
+Check(weatherWindow.Surface.Layout.Sections[0].Kind == WidgetSection.Weather, "After the transition the widget uses the saved module order");
+weatherWindow.Hide();
 var rowDevice=new Peripheral("row-mouse","Mouse A9",PeripheralKind.Mouse,LinkKind.Receiver,LinkState.Online,70,false,"test",DateTimeOffset.UtcNow);
 var rowState=new WidgetState {Devices=[rowDevice]};
 var rowWindow=new MainWindow(new AppSettings {ShowWeather=false,ShowCpu=false,ShowMemory=false,ShowTemperature=false,HideInactiveDevices=true},rowState,preview:true,persistSettings:false);

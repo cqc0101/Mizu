@@ -157,7 +157,7 @@ public sealed class MainWindow : Window
         var added = visible.FirstOrDefault(d => current.Contains(d.Id) && !onlineDevices.Contains(d.Id))?.Id; onlineDevices = current;
         if (added is not null) State.DevicePage = Math.Max(0, visible.ToList().FindIndex(d => d.Id == added) / 2);
         var target = Surface.TargetLayout;
-        if (appliedLayout is not null && Math.Abs(appliedLayout.Height - target.Height) > .01)
+        if (appliedLayout is not null && !appliedLayout.Sections.SequenceEqual(target.Sections))
         {
             ApplySettings();
         }
@@ -173,21 +173,30 @@ public sealed class MainWindow : Window
         animation.Completed += (_, _) => {
             if (generation != layoutGeneration) return;
             SetValue(LayoutProgressProperty, 1.0); BeginAnimation(LayoutProgressProperty, null);
-            Surface.TransitionLayout = null; layoutAnimating = false; UpdateTodoGeometry(); UpdateMediaControls();
+            Surface.TransitionLayout = null; layoutAnimating = false; UpdateTodoGeometry(); UpdateSectionControls();
         };
         BeginAnimation(LayoutProgressProperty, animation, HandoffBehavior.SnapshotAndReplace);
+        UpdateLayoutTransition();
     }
     private void UpdateLayoutTransition()
     {
         if (!layoutAnimating || layoutFrom is null || layoutTo is null) return;
         double p = (double)GetValue(LayoutProgressProperty);
-        Surface.TransitionLayout = new(layoutTo.Sections.Select(section => {
-            var old = layoutFrom.Sections.FirstOrDefault(s => s.Kind == section.Kind);
-            return section with { Top = (old?.Top ?? section.Top) * (1 - p) + section.Top * p, Height = (old?.Height ?? 0) * (1 - p) + section.Height * p };
-        }).ToArray(), layoutFrom.Height * (1 - p) + layoutTo.Height * p);
+        Surface.TransitionLayout = WidgetLayout.Interpolate(layoutFrom, layoutTo, p);
+        UpdateTodoGeometry(); UpdateSectionControls();
+    }
+    private void UpdateSectionControls()
+    {
         var todo = Surface.Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
-        if (todo is not null) todoHost.Margin = new(30, todo.Top, 0, 0);
-        UpdateTodoGeometry(); UpdateMediaControls();
+        todoHost.Opacity = todo?.Opacity ?? 0;
+        todoHost.IsHitTestVisible = !Settings.PanelLocked && todo?.Opacity >= .9;
+        if (todo is not null)
+        {
+            todoHost.Margin = new(30, todo.Top, 0, 0);
+            todoHost.Height = todo.Height;
+            todoHost.ClipToBounds = true;
+        }
+        UpdateMediaControls();
     }
     private void AnimateTodoFooter(bool open, bool animate = true)
     {
@@ -317,8 +326,8 @@ public sealed class MainWindow : Window
         var area = calculated.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
         var key = $"{Settings.ShowTodo}|{Settings.ShowVocabulary}|{calculated.Height}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
         if (key != todoKey) { BuildTodo(calculated); todoKey = key; }
-        UpdateMediaControls();
         ApplyPanelLock();
+        UpdateSectionControls();
         Surface.InvalidateVisual(); NativeWindow.Apply(this, Settings);
         if (!HasAddActions || Settings.PanelLocked) AnimateTodoFooter(false, false);
         else if (IsMouseOver) AnimateTodoFooter(true);
@@ -391,8 +400,8 @@ public sealed class MainWindow : Window
         var area = Surface.Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Media);
         var m = State.Media;
         if (area is not null) mediaHost.Margin = new(113, area.Top + 62, 0, 0);
-        mediaHost.Opacity = area is null ? 0 : Math.Clamp(area.Height / 104, 0, 1);
-        mediaHost.IsHitTestVisible = !Settings.PanelLocked && area?.Height >= 80;
+        mediaHost.Opacity = area is null ? 0 : area.Opacity * Math.Clamp(area.Height / 104, 0, 1);
+        mediaHost.IsHitTestVisible = !Settings.PanelLocked && area is { Height: >= 94, Opacity: >= .9 };
         var key = $"{area is not null}|{m.Playing}|{m.Previous}|{m.Toggle}|{m.Next}|{Settings.Theme}";
         if (key == mediaKey) return; mediaKey = key;
         HoverHints.CloseTree(mediaHost); mediaHost.Children.Clear();

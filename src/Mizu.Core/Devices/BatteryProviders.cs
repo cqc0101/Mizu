@@ -19,6 +19,7 @@ public sealed class WindowsBatteryProvider(IReadOnlyList<PnpNode> nodes, IReadOn
     {
         var results = new List<Peripheral>();
         var live = links ?? [];
+        var observed = DateTimeOffset.UtcNow;
         var families = nodes.Where(x => !string.IsNullOrWhiteSpace(x.ContainerId) && x.ContainerId != Guid.Empty.ToString()).GroupBy(x => x.ContainerId).ToDictionary(g => g.Key, g => g.ToArray());
         foreach (var n in nodes)
         {
@@ -39,13 +40,18 @@ public sealed class WindowsBatteryProvider(IReadOnlyList<PnpNode> nodes, IReadOn
             var percent = n.Battery ?? family.Select(x => x.Battery).FirstOrDefault(b => b.HasValue);
             var name = bt && !string.IsNullOrWhiteSpace(radio?.Name) ? radio.Name : n.Name;
             results.Add(new Peripheral(id, name, kind, bt ? LinkKind.Bluetooth : LinkKind.Unknown, state, percent, null, Name,
-                connected == true && percent is not null ? DateTimeOffset.UtcNow : null, n.ContainerId,
-                percent is not null ? "Windows 缓存电量；连接状态优先使用蓝牙实时事件" : "蓝牙已连接，但 Windows 尚未提供电量") { BluetoothAddress = radio?.Address });
+                connected == true && percent is not null ? observed : null, n.ContainerId,
+                percent is not null ? "Windows 缓存电量；连接状态优先使用蓝牙实时事件" : "蓝牙已连接，但 Windows 尚未提供电量") {
+                    BluetoothAddress = radio?.Address,
+                    ConnectionObservedAt = connected == true ? observed : null
+                });
         }
         // A paired HID may be connected before its PnP battery node appears.
         foreach (var radio in live.Where(l => l.Connected == true && l.Kind != PeripheralKind.Unknown))
             if (!results.Any(r => radio.Matches(r))) results.Add(new Peripheral("bt:" + DeviceIdentity.Hash(radio.Id), radio.Name, radio.Kind, LinkKind.Bluetooth,
-                LinkState.Online, null, null, Name, null, radio.ContainerId, "蓝牙已连接；等待系统电量") { BluetoothAddress = radio.Address });
+                LinkState.Online, null, null, Name, null, radio.ContainerId, "蓝牙已连接；等待系统电量") {
+                    BluetoothAddress = radio.Address, ConnectionObservedAt = observed
+                });
         return Task.FromResult<IReadOnlyList<Peripheral>>(results.GroupBy(x => x.Id).Select(x => x.OrderByDescending(y => y.State == LinkState.Online).ThenByDescending(y => y.Percent.HasValue).First()).ToArray());
     }
 }
