@@ -34,6 +34,7 @@ ArchitecturesInstallIn64BitMode=arm64
 OutputDir={#OutputDirPath}
 OutputBaseFilename=Mizu-{#AppVersion}-{#Runtime}-setup
 SetupIconFile=..\src\Mizu.Widget\Assets\mizu.ico
+ChangesAssociations=yes
 UninstallDisplayIcon={app}\Mizu.exe
 LicenseFile=..\LICENSE
 Compression=lzma2/fast

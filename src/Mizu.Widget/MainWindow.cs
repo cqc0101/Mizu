@@ -47,6 +47,7 @@ public sealed class MainWindow : Window
     public FrameworkElement VisualContent => layout;
     private Border? todoEditor;
     private SettingsWindow? settingsWindow;
+    private HardwareHistoryWindow? historyWindow;
     private bool quitting;
     private IntPtr hidNotification;
     private HashSet<string> onlineDevices = [];
@@ -63,7 +64,7 @@ public sealed class MainWindow : Window
         this.persistSettings = persistSettings;
         Settings = settings; State = state ?? new(); store = new();
         var initialLayout = WidgetLayout.Calculate(settings);
-        Title = "Mizu"; Width = 356 * settings.Scale; Height = initialLayout.Height * settings.Scale;
+        Title = "Mizu"; Icon = AppIcons.WindowIcon; Width = 356 * settings.Scale; Height = initialLayout.Height * settings.Scale;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; AllowsTransparency = true;
         Background = Brushes.Transparent; ShowInTaskbar = false; Topmost = settings.AlwaysOnTop;
         UseLayoutRounding = false;
@@ -83,7 +84,7 @@ public sealed class MainWindow : Window
         toolbar.Children.Add(IconButton("close", "收起到托盘", Hide));
         lockButton = IconButton("unlock", "锁定面板", () => {
             Settings.PanelLocked = !Settings.PanelLocked;
-            if (Settings.PanelLocked) { Keyboard.ClearFocus(); settingsWindow?.Close(); }
+            if (Settings.PanelLocked) { Keyboard.ClearFocus(); settingsWindow?.Close(); historyWindow?.Close(); }
             ApplySettings(); SaveSettings();
         });
         toolbar.Children.Add(lockButton);
@@ -91,11 +92,11 @@ public sealed class MainWindow : Window
         layout.RenderTransform = widgetScale;
         var stage = new Canvas(); stage.Children.Add(layout); Content = stage;
         Engine = new(settings, State, OnStateChanged);
-        tray = new() { Text = "Mizu", Visible = !preview };
-        using (var icon = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!)) if (icon is not null) tray.Icon = (System.Drawing.Icon)icon.Clone();
+        tray = new() { Text = "Mizu", Icon = AppIcons.CreateTrayIcon(), Visible = !preview };
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 收起", null, (_, _) => ToggleVisible());
         menu.Items.Add("设置", null, (_, _) => Dispatcher.Invoke(OpenSettings));
+        menu.Items.Add("硬件历史", null, (_, _) => Dispatcher.Invoke(() => OpenHardwareHistory()));
         menu.Items.Add("穿透鼠标 · Ctrl+Alt+M 恢复", null, (_, _) => Dispatcher.Invoke(() => { Settings.ClickThrough = !Settings.ClickThrough; ApplySettings(); SaveSettings(); }));
         menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(async () => await QuitAsync()));
         tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Dispatcher.Invoke(ToggleVisible);
@@ -126,6 +127,20 @@ public sealed class MainWindow : Window
         {
             if (e.OriginalSource is DependencyObject source && IsInteractive(source)) return;
             if (Settings.PanelLocked) { e.Handled = true; return; }
+            var point = e.GetPosition(Surface);
+            var hardwareArea = Surface.Layout.Sections.FirstOrDefault(s => point.Y >= s.Top && point.Y < s.Top + s.Height && s.Opacity >= .9);
+            if (hardwareArea?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory)
+            {
+                var metrics = new[] { HardwareMetric.Cpu, HardwareMetric.Memory, HardwareMetric.CpuTemperature }.Where(m => HardwareMetricInfo.Enabled(m, Settings)).ToArray();
+                HardwareMetric? metric = hardwareArea.Kind == WidgetSection.GpuMemory ? HardwareMetric.GpuDedicated :
+                    metrics.Length == 0 ? null : metrics[Math.Clamp((int)((point.X - 30) / (300.0 / metrics.Length)), 0, metrics.Length - 1)];
+                var origin = new Point(Left, Top);
+                try { DragMove(); } catch (InvalidOperationException) { }
+                Settings.Left = Left; Settings.Top = Top; SaveSettings();
+                if (Mouse.LeftButton == MouseButtonState.Released && Math.Abs(Left - origin.X) < 2 && Math.Abs(Top - origin.Y) < 2)
+                    OpenHardwareHistory(metric);
+                e.Handled = true; return;
+            }
             if (e.ClickCount == 2) { OpenSettings(); return; }
             try { DragMove(); Settings.Left = Left; Settings.Top = Top; SaveSettings(); } catch (InvalidOperationException) { }
         };
@@ -311,6 +326,7 @@ public sealed class MainWindow : Window
         var previous = Surface.TransitionLayout ?? appliedLayout;
         layoutGeneration++;
         layoutAnimating = false; BeginAnimation(LayoutProgressProperty, null); Surface.TransitionLayout = null;
+        State.HardwareHistory.ApplySettings(Settings);
         SettingsApplied?.Invoke();
         HoverHints.SetPalette(this, ThemePalette.Get(Settings.Theme));
         HoverHints.SetIsDark(this, ThemePalette.Get(Settings.Theme).Dark);
@@ -540,6 +556,17 @@ public sealed class MainWindow : Window
         if (settingsWindow is { IsLoaded: true }) { settingsWindow.Activate(); return; }
         settingsWindow = new(this); settingsWindow.Closed += (_, _) => settingsWindow = null; settingsWindow.Show();
     }
+    public void OpenHardwareHistory(HardwareMetric? metric = null)
+    {
+        if (historyWindow is { IsLoaded: true }) {
+            if (metric is { } chosen) historyWindow.SelectMetric(chosen);
+            if (historyWindow.WindowState == WindowState.Minimized) historyWindow.WindowState = WindowState.Normal;
+            historyWindow.Activate(); return;
+        }
+        historyWindow = new(this, metric);
+        historyWindow.Closed += (_, _) => historyWindow = null;
+        historyWindow.Show();
+    }
     public async Task RefreshAsync()
     { await Task.WhenAll(Engine.RefreshDevicesAsync(), Engine.RefreshWeatherAsync()); }
     internal void ShowInteractive()
@@ -548,15 +575,15 @@ public sealed class MainWindow : Window
         Show(); EnsureReachablePosition(); Activate();
     }
     public void ToggleVisible() => Dispatcher.Invoke(() => { if (IsVisible) Hide(); else ShowInteractive(); });
-    public async Task QuitAsync()
+    public async Task QuitAsync(int exitCode = 0)
     {
         if (disposed) return; disposed = true; quitting = true;
-        settingsWindow?.Close(); SaveSettings();
-        tray.Visible = false; tray.Dispose();
+        settingsWindow?.Close(); historyWindow?.Close(); SaveSettings();
+        tray.Visible = false; var trayIcon = tray.Icon; tray.Dispose(); trayIcon?.Dispose();
         NativeWindow.UnregisterHotKey(new WindowInteropHelper(this).Handle, 0x4d5a);
         if (hidNotification != IntPtr.Zero) { NativeWindow.UnregisterDeviceNotification(hidNotification);hidNotification=IntPtr.Zero; }
         todoHideDelay.Stop(); AnimateTodoFooter(false, false);
         displayTimer.Stop();
-        Hide(); await Engine.DisposeAsync(); Close(); Application.Current.Shutdown();
+        Hide(); await Engine.DisposeAsync(); Close(); Application.Current.Shutdown(exitCode);
     }
 }

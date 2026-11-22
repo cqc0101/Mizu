@@ -31,7 +31,14 @@ jobs:
           $asset = "Mizu-$($env:RELEASE_TAG.TrimStart('v'))-win-arm64.zip"
           $url = "https://github.com/${{ github.repository }}/releases/download/$($env:RELEASE_TAG)/$asset"
           Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\$asset"
-          Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/$($env:RELEASE_TAG)/SHA256SUMS.txt" -OutFile "$env:RUNNER_TEMP\SHA256SUMS.txt"
+          $manifest = "Mizu-$($env:RELEASE_TAG.TrimStart('v'))-SHA256SUMS.txt"
+          try {
+            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/$($env:RELEASE_TAG)/$manifest" -OutFile "$env:RUNNER_TEMP\SHA256SUMS.txt"
+          } catch {
+            if ([int]$_.Exception.Response.StatusCode -ne 404) { throw }
+            # Older releases used the unversioned manifest name.
+            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/$($env:RELEASE_TAG)/SHA256SUMS.txt" -OutFile "$env:RUNNER_TEMP\SHA256SUMS.txt"
+          }
           Expand-Archive -LiteralPath "$env:RUNNER_TEMP\$asset" -DestinationPath "$env:RUNNER_TEMP\package" -Force
 
       - name: Verify release checksum
@@ -70,7 +77,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $app = Join-Path $env:RUNNER_TEMP 'package\Mizu-win-arm64\app\Mizu.exe'
           $result = Join-Path $env:RUNNER_TEMP 'smoke'
-          $process = Start-Process -FilePath $app -ArgumentList @('--smoke', ('"' + $result + '"')) -PassThru
+          $process = Start-Process -FilePath $app -ArgumentList @('--smoke', ('"' + $result + '"')) -WindowStyle Hidden -PassThru
           if (-not $process.WaitForExit(90000)) {
             $process.Kill()
             throw 'Widget smoke check exceeded 90 seconds'
@@ -80,11 +87,10 @@ jobs:
           $reportPath = "$result\smoke.json"
           if (-not (Test-Path $reportPath)) { throw 'Widget did not write its smoke report' }
           $report = Get-Content $reportPath -Raw | ConvertFrom-Json
-          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
-          if ($architecture -ne [System.Runtime.InteropServices.Architecture]::Arm64) {
-            throw "Widget ran as $architecture instead of ARM64"
+          if ($report.ProcessArchitecture -and $report.ProcessArchitecture -ne 'Arm64') {
+            throw "Widget ran as $($report.ProcessArchitecture) instead of ARM64"
           }
-          $summary = "Smoke check passed in an ARM64 process on $([System.Runtime.InteropServices.RuntimeInformation]::OSDescription); widget rendered {0}x{1}." -f $report.Width,$report.Height
+          $summary = "Smoke check passed for the native ARM64 apphost on $([System.Runtime.InteropServices.RuntimeInformation]::OSDescription); widget rendered {0}x{1}." -f $report.Width,$report.Height
           $summary | Tee-Object -FilePath "$env:RUNNER_TEMP\smoke-summary.txt"
           $summary | Add-Content $env:GITHUB_STEP_SUMMARY
 

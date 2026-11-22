@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Mizu.Core/Mizu.Core.csproj" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../../CHANGELOG.md" LogicalName="Mizu.Changelog" /></ItemGroup>
+  <ItemGroup><Resource Include="Assets/mizu.ico" /></ItemGroup>
   <ItemGroup>
     <None Include="../../vendor/PawnIO/*" Link="drivers/PawnIO/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

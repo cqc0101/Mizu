@@ -83,11 +83,24 @@ public sealed class App : Application
                     PreviewRenderer.SaveVisual(panel, Path.Combine(directory, $"settings-{tab}.png"), 732, 650, 1.5);
                 }
                 settings.Close();
+                var history = new HardwareHistoryWindow(window); history.Show(); history.UpdateLayout();
+                var historyPanel = (FrameworkElement)history.Content;
+                var margin = historyPanel.Margin;
+                double imageWidth = historyPanel.ActualWidth + margin.Left + margin.Right, imageHeight = historyPanel.ActualHeight + margin.Top + margin.Bottom;
+                var historyImage = new DrawingVisual();
+                using (var drawing = historyImage.RenderOpen()) {
+                    drawing.DrawRectangle(history.Background, null, new(0, 0, imageWidth, imageHeight));
+                    drawing.DrawRectangle(new VisualBrush(historyPanel), null, new(margin.Left, margin.Top, historyPanel.ActualWidth, historyPanel.ActualHeight));
+                }
+                PreviewRenderer.SaveVisual(historyImage, Path.Combine(directory, "hardware-history.png"), imageWidth, imageHeight, 1.5);
+                history.Close();
+                var historySamples = Enum.GetValues<HardwareMetric>().ToDictionary(metric => metric.ToString(),
+                    metric => window.State.HardwareHistory.Read(metric, DateTimeOffset.UtcNow, HardwareHistory.Retention));
                 File.WriteAllText(Path.Combine(directory, "smoke.json"), JsonSerializer.Serialize(new
-                { window.State.System, window.State.GpuMemory, window.State.Devices, Bluetooth = window.Engine.BluetoothSummary, window.State.Network, window.State.Media, window.State.Weather, window.State.WeatherCached, window.State.WeatherFailed, window.State.Poetry, window.State.PoetryFailed, window.State.Scanning, Width = window.ActualWidth, Height = window.ActualHeight }, new JsonSerializerOptions { WriteIndented = true }));
+                { ProcessArchitecture = RuntimeInformation.ProcessArchitecture.ToString(), window.State.System, window.State.GpuMemory, History = historySamples, window.State.Devices, Bluetooth = window.Engine.BluetoothSummary, window.State.Network, window.State.Media, window.State.Weather, window.State.WeatherCached, window.State.WeatherFailed, window.State.Poetry, window.State.PoetryFailed, window.State.Scanning, Width = window.ActualWidth, Height = window.ActualHeight }, new JsonSerializerOptions { WriteIndented = true }));
                 await window.QuitAsync();
             }
-            catch (Exception ex) { File.WriteAllText(Path.Combine(directory, "smoke-error.txt"), ex.ToString()); await window.QuitAsync(); }
+            catch (Exception ex) { File.WriteAllText(Path.Combine(directory, "smoke-error.txt"), ex.ToString()); await window.QuitAsync(1); }
         };
         window.Show(); timer.Start(); return Run();
     }

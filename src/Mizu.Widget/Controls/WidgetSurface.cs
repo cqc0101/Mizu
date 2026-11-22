@@ -362,9 +362,10 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             else tip = "打开设置查看外设检测";
             if (devices.Count > 2) tip += "\n滚轮切换设备";
         }
-        if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip;
+        if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip + (settings.PanelLocked ? "" : "\n单击查看历史曲线");
         if (area?.Kind == WidgetSection.GpuMemory)
-            tip = state.GpuMemory is { } gpu ? $"{gpu.Source}\n专用显存 {FormatGpuMemory(gpu.DedicatedBytes)}\n共享内存 {FormatGpuMemory(gpu.SharedBytes)}" : "暂时无法读取显卡内存占用";
+            tip = (state.GpuMemory is { } gpu ? $"{gpu.Source}\n专用显存 {FormatGpuMemory(gpu.DedicatedBytes)}\n共享内存 {FormatGpuMemory(gpu.SharedBytes)}" : "暂时无法读取显卡内存占用") + (settings.PanelLocked ? "" : "\n单击查看历史曲线");
+        Cursor = !settings.PanelLocked && (area?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory) ? Cursors.Hand : Cursors.Arrow;
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
         if (area?.Kind == WidgetSection.Vocabulary) {
             var row = (int)((p.Y - area.Top) / WidgetLayout.VocabularyRowHeight(settings));

@@ -25,6 +25,7 @@ public sealed class AppSettings
     public bool ShowMemory { get; set; } = true;
     public bool ShowTemperature { get; set; } = true;
     public bool ShowGpuMemory { get; set; }
+    public bool RecordHardwareHistory { get; set; } = true;
     public bool ShowNetwork { get; set; }
     public bool ShowMedia { get; set; }
     public List<string>? NetworkProbeTargets { get; set; }

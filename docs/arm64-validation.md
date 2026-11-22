@@ -15,7 +15,7 @@
 ## 工作流检查内容
 
 - 从指定 Release 下载 ARM64 便携 ZIP 并解压。
-- 用附件 `SHA256SUMS.txt` 校验 ZIP。
+- 用附件 `Mizu-<版本>-SHA256SUMS.txt` 校验 ZIP，旧版 `SHA256SUMS.txt` 也兼容。
 - 检查 `app/Mizu.exe` 的 Windows PE 架构标记确实是 ARM64。
 - 确认进程实际以 ARM64 运行，在 GitHub 托管的 Windows on ARM 环境启动组件的短时检查，确认程序退出正常，并生成组件截图与运行报告。
 

@@ -17,6 +17,7 @@
 
 - 外设电量：自动识别蓝牙与部分 2.4G 接收器，区分键盘、鼠标，监听已配对蓝牙连接，自动优先显示新上线连接，保留离线旧读数。
 - 系统状态：CPU / 内存负载、趋势图，可选 CPU 温度。
+- 硬件历史：点击硬件区域查看 CPU、内存、温度与显存曲线，支持 5 分钟 / 15 分钟 / 1 小时范围、悬停读数与统计；可暂停记录，历史仅保留在本次运行的内存中。
 - 天气：当前、小时与多日预报自由组合，使用所选城市当地时间。
 - 待办：本地保存，直接添加、勾选与编辑。
 - 外观：五种主题，圆角、透明度、字号、字重与平滑缩放可调；悬停显示操作按钮。
@@ -24,7 +25,7 @@
 
 ## 开始使用
 
-当前版本 **0.5.1 预览版**。[下载安装版或便携版](https://github.com/cqc0101/Mizu/releases/tag/v0.5.1)。
+当前源码版本 **0.7.10 预览版**。[查看已发布的安装版或便携版](https://github.com/cqc0101/Mizu/releases)。
 安装版运行对应的 `-setup.exe`；便携版完整解压，双击根目录 `Mizu.exe`。[安装与卸载说明](docs/installation.md)
 常见 Intel / AMD 电脑使用 `win-x64`；32 位 Windows 使用 `win-x86`；ARM 使用 `win-arm64`。
 首次使用在设置中选择城市并调整显示内容。双击组件或按 `Ctrl+,` 打开设置；托盘菜单可退出。
@@ -61,7 +62,7 @@ dotnet run --project .\tests\Mizu.Widget.Checks\Mizu.Widget.Checks.csproj -c Rel
 pwsh .\scripts\publish.ps1 -Runtime win-x64
 ```
 
-输出：`artifacts/Mizu-0.5.2-win-x64/`。其他可选目标：`win-x86`、`win-arm64`。
+输出：`artifacts/Mizu-<版本>-win-x64/`。其他可选目标：`win-x86`、`win-arm64`。
 首次还原和跨架构发布需要访问 NuGet。WPF 检查需要交互式 Windows 桌面。
 [ARM64 云端验证](docs/arm64-validation.md) · [架构与扩展](docs/architecture.md) · [参与贡献](CONTRIBUTING.md) · [版本记录](CHANGELOG.md)
 

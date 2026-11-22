@@ -6,7 +6,7 @@
 
 两种版本共用 `%LOCALAPPDATA%\Mizu` 设置与待办。卸载保留这些数据；也不会卸载可能被其他软件使用的共享 PawnIO 驱动。温度驱动仍由用户在组件设置里主动安装，不会随安装版静默安装。
 
-当前发布的 Mizu 安装程序未购买代码签名证书，Windows 可能显示未知发布者；官方 PawnIO 安装程序保留原厂签名。可使用 Release 附带的 `SHA256SUMS.txt` 核对下载文件。
+当前发布的 Mizu 安装程序未购买代码签名证书，Windows 可能显示未知发布者；官方 PawnIO 安装程序保留原厂签名。可使用 Release 附带的 `Mizu-<版本>-SHA256SUMS.txt`（旧版名为 `SHA256SUMS.txt`）核对下载文件。
 
 ## 构建安装程序
 

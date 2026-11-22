@@ -400,7 +400,101 @@ try {
     Check(delayedFailure.Calls == 1, "Offline refresh does not wait for another failed network request during backoff");
     fallbackEngine.DisposeAsync().AsTask().GetAwaiter().GetResult();
 } finally { System.IO.Directory.Delete(fallbackFolder,true); }
-dialog.Close();main.Hide();Console.WriteLine($"PASS {checks} WPF checks: rounded alpha, hover hit targets, todo add/complete, reflow and all settings pages. No driver installed.");app.Shutdown();return 0;
+var historySettings = new AppSettings { ShowGpuMemory = true, TemperatureEnabled = true };
+var historyState = new WidgetState();
+var historyEnd = DateTimeOffset.UtcNow;
+for (int i = 0; i <= 1800; i++) {
+    var time = historyEnd.AddSeconds((i - 1800) * 2);
+    double cpu = 22 + Math.Sin(i * .027) * 8 + Math.Max(0, Math.Sin(i * .123)) * 24;
+    historyState.HardwareHistory.RecordSystem(time, new(i is >= 1580 and < 1590 ? null : cpu, 42 + Math.Sin(i * .009) * 4, 51 + cpu * .23, ""), historySettings);
+    if (i % 5 == 0) historyState.HardwareHistory.RecordGpu(time, new((long)((410 + Math.Sin(i * .019) * 95) * 1048576), (long)((110 + Math.Sin(i * .011) * 30) * 1048576), null, "Preview data"), historySettings);
+}
+var historyMain = new MainWindow(historySettings, historyState, preview:true, persistSettings:false);
+historyMain.OpenHardwareHistory();
+Pump(60);
+var historyWindow = app.Windows.OfType<HardwareHistoryWindow>().Single();
+var historyChart = Desc<HardwareHistoryChart>(historyWindow).Single();
+Check(historyChart.Metric == HardwareMetric.Cpu && historyChart.Samples.Count > 400, "History entry opens live fifteen-minute CPU data");
+historyMain.OpenHardwareHistory(HardwareMetric.GpuDedicated);
+Check(app.Windows.OfType<HardwareHistoryWindow>().Count() == 1 && historyChart.Metric == HardwareMetric.GpuDedicated, "Hardware entry reuses the existing window and selects the clicked metric");
+Desc<Button>(historyWindow).Single(b=>Equals(b.Content,"5 分钟")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+Check(historyChart.Range == TimeSpan.FromMinutes(5) && historyChart.Samples.Count <= 151, "Range selector changes the actual displayed samples");
+var historyImages = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "artifacts", "history-preview");
+System.IO.Directory.CreateDirectory(historyImages);
+foreach (var themeId in new[] {"light","dark","navy","pink","lavender"}) {
+    historySettings.Theme = themeId; historyMain.ApplySettings();
+    historyWindow.SelectMetric(HardwareMetric.Cpu);
+    Desc<Button>(historyWindow).Single(b=>Equals(b.Content,"15 分钟")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+    Pump(180); historyWindow.UpdateLayout();
+    Check(historyChart.Palette.Id == themeId, "Open history follows theme " + themeId);
+    var historyRoot = (Grid)historyWindow.Content; var margin = historyRoot.Margin;
+    var scene = new DrawingVisual();
+    double imageWidth = historyRoot.ActualWidth + margin.Left + margin.Right, imageHeight = historyRoot.ActualHeight + margin.Top + margin.Bottom;
+    using (var drawing = scene.RenderOpen()) {
+        drawing.DrawRectangle(historyWindow.Background, null, new Rect(0, 0, imageWidth, imageHeight));
+        drawing.DrawRectangle(new VisualBrush(historyRoot), null, new Rect(margin.Left, margin.Top, historyRoot.ActualWidth, historyRoot.ActualHeight));
+    }
+    var historyBitmap = new RenderTargetBitmap((int)(imageWidth * 2), (int)(imageHeight * 2), 192, 192, PixelFormats.Pbgra32); historyBitmap.Render(scene);
+    var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(historyBitmap));
+    using var output = System.IO.File.Create(System.IO.Path.Combine(historyImages, themeId + ".png")); png.Save(output);
+}
+historyWindow.Width = historyWindow.MinWidth; historyWindow.Height = historyWindow.MinHeight; Pump(50);
+foreach (var metric in Enum.GetValues<HardwareMetric>()) {
+    historyWindow.SelectMetric(metric); historyWindow.UpdateLayout();
+    Check(historyChart.ActualWidth > 500 && historyChart.ActualHeight >= 190, "All metrics render at the minimum window size: " + metric);
+    var root = (FrameworkElement)historyWindow.Content;
+    var historyFooter = Desc<TextBlock>(root).Single(t=>t.Text.StartsWith("悬停曲线"));
+    Check(historyFooter.TranslatePoint(new Point(0, historyFooter.ActualHeight), root).Y <= root.ActualHeight + 1, "The minimum window does not clip its footer: " + metric);
+    Capture(historyWindow);
+}
+historyWindow.SelectMetric(HardwareMetric.Cpu);
+historyState.HardwareHistory.RecordSystem(DateTimeOffset.UtcNow, new(71, 45, 63, ""), historySettings);
+Check(historyChart.Samples.Last().Value == 71, "An open history curve receives new samples without reopening");
+historySettings.RecordHardwareHistory = false; historyMain.ApplySettings();
+Check(Desc<TextBlock>(historyWindow).Any(t=>t.Text.StartsWith("记录已暂停")), "Paused recording is visible in the history window");
+var pausedNow = historyChart.Now; Pump(25);
+historyState.HardwareHistory.RecordSystem(DateTimeOffset.UtcNow, new(95, 95, 95, ""), historySettings);
+bool pausedTimelineAdvances = historyChart.Now > pausedNow;
+historyWindow.MinHeight = 280; historyWindow.Height = 360; Pump(50); historyWindow.UpdateLayout();
+var compactFooter = Desc<TextBlock>(historyWindow).Single(t=>t.Text.StartsWith("悬停曲线"));
+compactFooter.BringIntoView(); Pump(40);
+var compactRoot = (FrameworkElement)historyWindow.Content;
+var footerBottom = compactFooter.TranslatePoint(new Point(0, compactFooter.ActualHeight), compactRoot).Y;
+bool compactFooterReachable = footerBottom <= compactRoot.ActualHeight + 1 &&
+    Desc<ScrollViewer>(historyWindow).Any(s=>s.ScrollableHeight > 0 && s.VerticalOffset > 0);
+historyWindow.Close();
+historyState.HardwareHistory.RecordSystem(DateTimeOffset.UtcNow.AddSeconds(2), new(1, 2, 3, ""), new AppSettings());
+Check(!app.Windows.OfType<HardwareHistoryWindow>().Any(), "History window closes cleanly while sampling continues");
+historyMain.Hide();
+var gapHistory = new HardwareHistory();
+var gapSettings = new AppSettings();
+var gapStart = DateTimeOffset.UtcNow.AddSeconds(-20);
+gapHistory.RecordSystem(gapStart, new(20, 30, null, ""), gapSettings);
+gapSettings.RecordHardwareHistory = false;
+gapHistory.RecordSystem(gapStart.AddSeconds(2), new(40, 30, null, ""), gapSettings);
+gapSettings.RecordHardwareHistory = true;
+gapHistory.RecordSystem(gapStart.AddSeconds(8), new(60, 30, null, ""), gapSettings);
+var gapChart = new HardwareHistoryChart { Width = 600, Height = 280 };
+gapChart.Update(HardwareMetric.Cpu, gapHistory.Read(HardwareMetric.Cpu, gapStart.AddSeconds(20), TimeSpan.FromSeconds(20)),
+    gapStart.AddSeconds(20), TimeSpan.FromSeconds(20), ThemePalette.All[0]);
+gapChart.Measure(new(600,280)); gapChart.Arrange(new(0,0,600,280)); gapChart.UpdateLayout();
+var gapBitmap = Capture(gapChart);
+var gapPixels = new byte[gapBitmap.PixelWidth*gapBitmap.PixelHeight*4]; gapBitmap.CopyPixels(gapPixels,gapBitmap.PixelWidth*4,0);
+bool shortPauseStaysBlank = true;
+for(int y=298;y<=302;y++)for(int x=310;x<=314;x++)if(gapPixels[(y*gapBitmap.PixelWidth+x)*4+3]>20)shortPauseStaysBlank=false;
+var emptyHistorySettings = new AppSettings();
+var emptyHistoryMain = new MainWindow(emptyHistorySettings, preview:true, persistSettings:false);
+emptyHistoryMain.OpenHardwareHistory(); Pump(30);
+var emptyHistoryWindow = app.Windows.OfType<HardwareHistoryWindow>().Single();
+var emptyHistoryChart = Desc<HardwareHistoryChart>(emptyHistoryWindow).Single();
+emptyHistorySettings.ShowCpu = false; emptyHistoryMain.ApplySettings();
+bool hiddenMetricReplaced = emptyHistoryChart.Metric == HardwareMetric.Memory;
+emptyHistoryWindow.Close(); emptyHistoryMain.Hide();
+Check(pausedTimelineAdvances, "Paused recording advances the displayed time window");
+Check(compactFooterReachable, "An undersized history viewport can scroll the footer into view");
+Check(shortPauseStaysBlank, "A short recording pause has no interpolated line or area fill");
+Check(hiddenMetricReplaced, "Closing an empty selected metric switches to a visible metric");
+dialog.Close();main.Hide();Console.WriteLine($"PASS {checks} WPF checks: rounded alpha, hover hit targets, todo add/complete, reflow, settings and hardware history. No driver installed.");app.Shutdown();return 0;
 }
 }
 

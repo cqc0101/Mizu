@@ -67,7 +67,7 @@ public sealed class SettingsWindow : Window
         theme.Brush("#FCFCF8");
         theme.Brush("#FCFDF8");
         theme.Apply(settings.Theme); status.Foreground = theme.Brush("#8B7758");
-        Title = "Mizu · 设置"; Width = 780; Height = 790; MinWidth = 680; MinHeight = 560;
+        Title = "Mizu · 设置"; Icon = AppIcons.WindowIcon; Width = 780; Height = 790; MinWidth = 680; MinHeight = 560;
         MaxHeight = SystemParameters.WorkArea.Height - 24;
         WindowStartupLocation = WindowStartupLocation.CenterScreen; Background = theme.Brush("#F0F1EC"); Foreground = theme.Brush("#41483E");
         FontFamily = new("Segoe UI, Microsoft YaHei UI"); FontSize = 13;
@@ -186,6 +186,9 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Toggle("内存占用", settings.ShowMemory, v => { settings.ShowMemory = v; Save(); }));
         panel.Children.Add(Toggle("CPU 温度", settings.ShowTemperature, v => { settings.ShowTemperature = v; Save(); }));
         panel.Children.Add(Toggle("显卡显存占用", settings.ShowGpuMemory, v => { settings.ShowGpuMemory = v; Save(); }));
+        panel.Children.Add(Toggle("记录硬件历史", settings.RecordHardwareHistory, v => { settings.RecordHardwareHistory = v; Save(); }));
+        panel.Children.Add(Label("保留已开启指标最近 1 小时的曲线，退出后清空。单击组件的硬件区域即可查看。", true));
+        panel.Children.Add(ActionButton("查看历史曲线", (_, _) => widget.OpenHardwareHistory()));
         panel.Children.Add(Toggle("网络状态与上下行", settings.ShowNetwork, v => { settings.ShowNetwork = v; Save(); }));
         panel.Children.Add(Label("显示当前活动网卡速率。开启后每 2 秒 ICMP 探测一次；丢包率为最近 60 次到目标的探测失败比例，不代表所有网络流量。", true));
         panel.Children.Add(Toggle("在组件显示探测 IP", settings.ShowNetworkProbeIp, v => { settings.ShowNetworkProbeIp = v; Save(); }));

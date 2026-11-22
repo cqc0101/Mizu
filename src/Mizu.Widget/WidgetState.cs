@@ -11,6 +11,7 @@ public sealed class WidgetState
     public MediaSnapshot Media { get; set; } = MediaSnapshot.Empty();
     public SystemSnapshot System { get; set; } = new(null, null, null, "");
     public GpuMemorySnapshot? GpuMemory { get; set; }
+    public HardwareHistory HardwareHistory { get; } = new();
     public IReadOnlyList<Peripheral> Devices { get; set; } = [];
     public WeatherSnapshot? Weather { get; set; }
     public bool WeatherCached { get; set; }
@@ -199,7 +200,9 @@ public sealed class WidgetEngine(AppSettings settings, WidgetState state, Action
                 var result = await reader.SampleAsync(stop.Token);
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    if (!settings.ShowGpuMemory || state.GpuMemory == result) return;
+                    if (stop.IsCancellationRequested || !settings.ShowGpuMemory) return;
+                    state.HardwareHistory.RecordGpu(DateTimeOffset.UtcNow, result, settings);
+                    if (state.GpuMemory == result) return;
                     state.GpuMemory = result;
                     changed();
                 });
@@ -217,7 +220,12 @@ public sealed class WidgetEngine(AppSettings settings, WidgetState state, Action
             do
             {
                 var snapshot = telemetry.Sample(settings.TemperatureEnabled);
-                await Application.Current.Dispatcher.InvokeAsync(() => { state.Record(snapshot); changed(); });
+                await Application.Current.Dispatcher.InvokeAsync(() => {
+                    if (stop.IsCancellationRequested) return;
+                    state.Record(snapshot);
+                    state.HardwareHistory.RecordSystem(DateTimeOffset.UtcNow, snapshot, settings);
+                    changed();
+                });
                 _ = NotifySafely(snapshot);
             } while (await timer.WaitForNextTickAsync(stop.Token));
         }

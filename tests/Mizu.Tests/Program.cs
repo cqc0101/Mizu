@@ -10,6 +10,56 @@ try {
 var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
+var monitorSettings = new AppSettings { TemperatureEnabled = true, ShowGpuMemory = true };
+var hardware = new HardwareHistory();
+hardware.RecordSystem(now, new(24, 48, 53, ""), monitorSettings);
+hardware.RecordSystem(now.AddSeconds(2), new(null, 49, null, ""), monitorSettings);
+Check(hardware.Read(HardwareMetric.Cpu, now.AddSeconds(2), TimeSpan.FromMinutes(5)).Select(s => s.Value).SequenceEqual(new double?[] {24, null}), "Missing CPU readings remain gaps rather than zero or a repeated reading");
+Check(hardware.Read(HardwareMetric.CpuTemperature, now.AddSeconds(2), TimeSpan.FromMinutes(5)).Last().Value is null, "Missing temperature remains a gap");
+hardware.RecordGpu(now, new(400 * 1048576L, null, null, "NVIDIA"), monitorSettings);
+hardware.RecordGpu(now.AddSeconds(5), new(400 * 1048576L, null, null, "NVIDIA"), monitorSettings);
+Check(hardware.Read(HardwareMetric.GpuDedicated, now.AddSeconds(5), TimeSpan.FromMinutes(5)).Count == 2, "Stable GPU memory still records every actual sample");
+Check(hardware.Read(HardwareMetric.GpuShared, now.AddSeconds(5), TimeSpan.FromMinutes(5)).All(s => s.Value is null), "Unsupported shared GPU memory is never invented");
+monitorSettings.RecordHardwareHistory = false;
+hardware.RecordSystem(now.AddSeconds(4), new(90, 90, 90, ""), monitorSettings);
+hardware.RecordGpu(now.AddSeconds(10), null, monitorSettings);
+Check(hardware.Read(HardwareMetric.Cpu, now.AddSeconds(10), HardwareHistory.Retention).Count == 2 && hardware.Read(HardwareMetric.GpuDedicated, now.AddSeconds(10), HardwareHistory.Retention).Count == 2, "Pause stops both system and GPU history without discarding prior readings");
+monitorSettings.RecordHardwareHistory = true; monitorSettings.ShowCpu = false; monitorSettings.TemperatureEnabled = false;
+hardware.RecordSystem(now.AddSeconds(6), new(25, 50, 54, ""), monitorSettings);
+Check(hardware.Read(HardwareMetric.Cpu, now.AddSeconds(6), HardwareHistory.Retention).Last().Value is null && hardware.Read(HardwareMetric.CpuTemperature, now.AddSeconds(6), HardwareHistory.Retention).Last().Value is null, "Disabled metrics and temperature acquisition do not record hidden readings");
+var bounded = new HardwareHistory();
+for (int i = 0; i <= 7200; i++) bounded.RecordSystem(now.AddSeconds(i * 2), new(i % 100, 48, null, ""), new AppSettings());
+var lastTime = now.AddHours(4);
+var retained = bounded.Read(HardwareMetric.Cpu, lastTime, HardwareHistory.Retention);
+Check(retained.Count == 1801 && retained[0].Time == lastTime.AddHours(-1), "Four hours of monitoring retains only one hour of CPU samples");
+Check(bounded.Read(HardwareMetric.Cpu, lastTime, TimeSpan.FromMinutes(5)).Count == 151, "Five-minute view excludes samples outside its range");
+Check(bounded.Read(HardwareMetric.Cpu, lastTime.AddHours(2), HardwareHistory.Retention).Count == 0, "Expired samples do not reappear after a long sleep");
+bounded.RecordSystem(lastTime.AddMinutes(-30), new(10, 20, null, ""), new AppSettings());
+Check(bounded.Read(HardwareMetric.Cpu, lastTime.AddMinutes(-30), HardwareHistory.Retention).Count == 1, "Clock rollback starts an ordered curve without future points");
+var fastHistory = new HardwareHistory();
+for (int i = 0; i < 4000; i++) fastHistory.RecordSystem(now.AddMilliseconds(i), new(double.NaN, double.PositiveInfinity, double.NaN, ""), new AppSettings { TemperatureEnabled = true });
+Check(fastHistory.Read(HardwareMetric.Cpu, now.AddSeconds(4), HardwareHistory.Retention).Count == HardwareHistory.MaximumSamplesPerMetric, "Burst sampling cannot exceed the independent memory cap");
+Check(fastHistory.Read(HardwareMetric.CpuTemperature, now.AddSeconds(4), HardwareHistory.Retention).All(s => s.Value is null), "Invalid floating-point values cannot reach chart geometry");
+var resumed = new HardwareHistory();
+var resumeSettings = new AppSettings { ShowGpuMemory = true };
+resumed.RecordSystem(now, new(20, 40, null, ""), resumeSettings);
+resumed.RecordGpu(now, new(100, 50, null, "test"), resumeSettings);
+resumeSettings.RecordHardwareHistory = false; resumed.ApplySettings(resumeSettings);
+resumeSettings.RecordHardwareHistory = true;
+resumed.RecordSystem(now.AddSeconds(4), new(60, 50, null, ""), resumeSettings);
+resumed.RecordGpu(now.AddSeconds(5), new(200, 80, null, "test"), resumeSettings);
+Check(resumed.Read(HardwareMetric.Cpu, now.AddSeconds(5), HardwareHistory.Retention).Last().StartsSegment, "CPU resume breaks a short pause even when no sampling tick occurred while paused");
+Check(resumed.Read(HardwareMetric.GpuDedicated, now.AddSeconds(5), HardwareHistory.Retention).Last().StartsSegment, "GPU resume also breaks a short recording pause");
+resumeSettings.ShowGpuMemory = false; resumed.ApplySettings(resumeSettings);
+resumeSettings.ShowGpuMemory = true; resumed.RecordGpu(now.AddSeconds(8), new(250, 90, null, "test"), resumeSettings);
+Check(resumed.Read(HardwareMetric.GpuDedicated, now.AddSeconds(8), HardwareHistory.Retention).Last().StartsSegment, "Disabling and reenabling the GPU module leaves a discontinuity");
+resumed.RecordGpu(now.AddSeconds(10), new(250, 90, null, "test"), resumeSettings);
+Check(!resumed.Read(HardwareMetric.GpuDedicated, now.AddSeconds(10), HardwareHistory.Retention).Last().StartsSegment, "Uninterrupted equal GPU readings connect normally");
+resumeSettings.RecordHardwareHistory = false;
+resumed.RecordSystem(now.AddHours(2), new(0, 0, null, ""), resumeSettings);
+Check(resumed.Read(HardwareMetric.Cpu, now.AddSeconds(10), HardwareHistory.Retention).Count == 0 &&
+      resumed.Read(HardwareMetric.GpuDedicated, now.AddSeconds(10), HardwareHistory.Retention).Count == 0,
+      "Paused monitoring expires both CPU and GPU storage rather than only filtering the visible range");
 Check(KnownWiredKeyboardProvider.RecognizedModel("HHKB Professional", "PFU Limited")=="HHKB Professional","HHKB product descriptor is a readable model");
 foreach(var generic in new[]{"USB Keyboard","HID Keyboard Device","Gaming Keyboard","Wireless mouse 8k NANO dongle-L","HID VHF Driver","VID_0853&PID_0100"})
     Check(KnownWiredKeyboardProvider.RecognizedModel(generic,"Generic") is null,"Generic and non-keyboard descriptions are excluded: "+generic);
