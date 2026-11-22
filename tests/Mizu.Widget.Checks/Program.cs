@@ -28,6 +28,10 @@ static IEnumerable<string> DrawingText(Drawing? drawing) {
 if(drawing is GlyphRunDrawing glyph && glyph.GlyphRun.Characters is { } characters)yield return new string(characters.ToArray());
 if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var text in DrawingText(child))yield return text;
 }
+static IEnumerable<GlyphRun> DrawingGlyphs(Drawing? drawing) {
+if(drawing is GlyphRunDrawing glyph)yield return glyph.GlyphRun;
+if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var run in DrawingGlyphs(child))yield return run;
+}
 static void Pump(int milliseconds) {
 var frame=new System.Windows.Threading.DispatcherFrame();
 var timer=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMilliseconds(milliseconds)};
@@ -55,7 +59,7 @@ Check(pixels[((h/2)*w+w/2)*4+3]>0,"Material present");
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
 var gpuSettings = new AppSettings { ShowWeather = false, ShowDevices = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false };
-var gpuState = new WidgetState { GpuMemory = new GpuMemorySnapshot(400 * 1048576L, null, 4 * 1073741824L, "NVIDIA") };
+var gpuState = new WidgetState { GpuMemory = new GpuMemorySnapshot(1073741824L, null, 4 * 1073741824L, "NVIDIA") };
 var gpuSurface = new WidgetSurface(gpuState, gpuSettings) { Width = 356 };
 Check(!gpuSurface.Layout.Sections.Any(s => s.Kind == WidgetSection.GpuMemory), "GPU memory remains hidden by default");
 gpuSettings.ShowGpuMemory = true;
@@ -64,8 +68,28 @@ gpuSurface.Measure(new Size(356, gpuSurface.Height)); gpuSurface.Arrange(new Rec
 Capture(gpuSurface);
 var gpuText = string.Concat(DrawingText(VisualTreeHelper.GetDrawing(gpuSurface)));
 Check(gpuSurface.Layout.Sections.Single().Kind == WidgetSection.GpuMemory &&
-    gpuText.Contains("400 MB") && gpuText.Contains("4.0 GB") && gpuText.Contains("共享内存") && gpuText.Contains("—"),
+    gpuText.Contains("1/4 GB") && gpuText.Contains("共享内存") && gpuText.Contains("—"),
     "GPU memory can render independently and uses an explicit placeholder for unsupported shared memory");
+gpuSettings.VramDisplayMode = MemoryDisplayMode.Percentage;
+gpuSettings.ShowVramTemperature = true;
+gpuState.GpuMemory = gpuState.GpuMemory! with { SharedBytes = 1073741824L, SharedCapacityBytes = 8 * 1073741824L, VramCelsius = 68 };
+gpuSurface.InvalidateVisual(); gpuSurface.UpdateLayout(); Capture(gpuSurface);
+gpuText = string.Concat(DrawingText(VisualTreeHelper.GetDrawing(gpuSurface)));
+Check(gpuText.Contains("25%") && gpuText.Contains("12.5%") && gpuText.Contains("68 °C") &&
+    gpuSurface.GpuMetricAt(250) == HardwareMetric.VramTemperature, "GPU percentage and memory temperature render together in separate columns: " + gpuText);
+gpuSettings.ShowGpuMemory = false;
+gpuState.GpuMemory = null;
+gpuSurface.InvalidateVisual(); gpuSurface.UpdateLayout(); Capture(gpuSurface);
+gpuText = string.Concat(DrawingText(VisualTreeHelper.GetDrawing(gpuSurface)));
+Check(gpuSurface.Layout.Sections.Single().Kind == WidgetSection.GpuMemory && gpuText.Contains("显存温度") &&
+    gpuText.Contains("—") && !gpuText.Contains("共享内存"), "VRAM temperature can render without usage and shows a placeholder without a sensor");
+var ramState = new WidgetState { System = new(25, 50, 45, "") { MemoryUsedBytes = 16 * 1073741824L, MemoryTotalBytes = 32 * 1073741824L } };
+var ramSettings = new AppSettings { ShowWeather = false, ShowDevices = false, RamDisplayMode = MemoryDisplayMode.Capacity, TextScale = 1.4 };
+var ramSurface = new WidgetSurface(ramState, ramSettings) { Width = 356 };
+ramSurface.Height = ramSurface.Layout.Height;
+ramSurface.Measure(new Size(356, ramSurface.Height)); ramSurface.Arrange(new Rect(0, 0, 356, ramSurface.Height));
+Capture(ramSurface);
+Check(string.Concat(DrawingText(VisualTreeHelper.GetDrawing(ramSurface))).Contains("16/32 GB"), "RAM capacities fit the three-column view at a large text scale");
 var wiredUiSettings=new AppSettings();var wiredUiState=new WidgetState {Devices=[new Peripheral("wired-test","HHKB Professional",PeripheralKind.Keyboard,LinkKind.Wired,LinkState.Online,null,null,"test",DateTimeOffset.UtcNow){IdentifiedWiredKeyboard=true}]};
 var wiredSurface=new WidgetSurface(wiredUiState,wiredUiSettings);
 Check(wiredSurface.VisibleDevices.Count==0,"Recognized wired keyboards remain hidden when independent switch is off");
@@ -157,6 +181,22 @@ Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加单词")).RaiseEvent(new 
 Check(settingsLive.Vocabulary.Single().Word=="serene" && settingsLive.Vocabulary.Single().Meaning=="宁静的","Vocabulary controls add a word and meaning");
 var showWords=Desc<CheckBox>(dialog).Single(c=>Equals(c.Content,"在组件上显示单词本"));showWords.IsChecked=true;main.UpdateLayout();
 Check(main.Surface.TargetLayout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Vocabulary toggle adds its section");
+var meaningSize = Desc<Slider>(dialog).Single(s => System.Windows.Automation.AutomationProperties.GetName(s) == "中文释义字号");
+Pump(330);
+Capture(main.VisualContent);
+GlyphRun VocabularyGlyph(char firstChar) => DrawingGlyphs(VisualTreeHelper.GetDrawing(main.Surface))
+    .First(run => run.Characters is { Count: > 0 } chars && chars[0] == firstChar);
+double englishSize = VocabularyGlyph('s').FontRenderingEmSize;
+double chineseSize = VocabularyGlyph('宁').FontRenderingEmSize;
+double defaultRowHeight = main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height;
+meaningSize.Value = meaningSize.Maximum;
+Pump(330); main.UpdateLayout(); Capture(main.VisualContent);
+var adjustedRow = main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
+Check(settingsLive.VocabularyMeaningFontSize == meaningSize.Maximum && VocabularyGlyph('宁').FontRenderingEmSize > chineseSize &&
+    VocabularyGlyph('s').FontRenderingEmSize == englishSize && adjustedRow.Height > defaultRowHeight,
+    "The actual Chinese font-size slider expands the definition and its row while keeping the English glyph size");
+meaningSize.Value = AppSettings.DefaultVocabularyMeaningFontSize;
+Pump(330);
 WordInput("新单词").Text="SERENE";Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加单词")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(settingsLive.Vocabulary.Count==1,"Duplicate word does not replace existing notes");
 Desc<Button>(dialog).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="删除单词").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

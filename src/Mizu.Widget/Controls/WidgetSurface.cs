@@ -53,11 +53,11 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     }
     private bool Dark => Palette.Dark;
     private double Dpi => VisualTreeHelper.GetDpi(this).PixelsPerDip;
-    private void Text(DrawingContext d, string value, double x, double y, double size, Brush brush, double pixelsPerDip = 1, bool medium = false, double? width = null)
+    private void Text(DrawingContext d, string value, double x, double y, double size, Brush brush, double pixelsPerDip = 1, bool medium = false, double? width = null, bool fit = false)
     {
         var available = width ?? Math.Max(1, SurfaceWidth - 29 - x);
         Art.Text(d, value, x, y + size * (1 - settings.TextScale) * .5, size * settings.TextScale, brush,
-            pixelsPerDip, medium, available, settings.TextWeight, fit: value.All(c => !char.IsLetter(c)));
+            pixelsPerDip, medium, available, settings.TextWeight, fit: fit || value.All(c => !char.IsLetter(c)));
     }
     protected override void OnRender(DrawingContext d)
     {
@@ -117,7 +117,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                     {
                         var entry = vocabulary.Visible[row]; var y = section.Top + row * WidgetLayout.VocabularyRowHeight(settings);
                         Text(d, entry.Word, 31, y + 3, 22, foreground, Dpi, medium: true, width: 294);
-                        if (!settings.VocabularyHideMeaning) Text(d, entry.Meaning, 31, y + 34, 12, secondary, Dpi, width: 294);
+                        if (!settings.VocabularyHideMeaning)
+                            Art.Text(d, entry.Meaning, 31, y + WidgetLayout.VocabularyMeaningTop, settings.VocabularyMeaningFontSize * settings.TextScale,
+                                secondary, Dpi, width: 294, weight: settings.TextWeight);
                     }
                     break;
                 case WidgetSection.Todo:
@@ -133,19 +135,26 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     private void DrawGpuMemory(DrawingContext d, double top)
     {
         var memory = state.GpuMemory;
-        Text(d, "专用显存", 30, top, 11, secondary, Dpi, width: 145);
-        var used = FormatGpuMemory(memory?.DedicatedBytes);
-        var dedicated = memory?.DedicatedCapacityBytes is { } capacity ? $"{used} / {FormatGpuMemory(capacity)}" : used;
-        Text(d, dedicated, 30, top + 21, 16, foreground, Dpi, width: 145);
-        Text(d, "共享内存", 185, top, 11, secondary, Dpi, width: 141);
-        Text(d, FormatGpuMemory(memory?.SharedBytes), 185, top + 21, 16, foreground, Dpi, width: 141);
+        int columns = (settings.ShowGpuMemory ? 2 : 0) + (settings.ShowVramTemperature ? 1 : 0);
+        if (columns == 0) return;
+        double column = 300d / columns;
+        void DrawColumn(int index, string title, string value)
+        {
+            double x = 30 + index * column;
+            Text(d, title, x, top, 11, secondary, Dpi, width: column - 10);
+            Text(d, value, x, top + 21, 16, foreground, Dpi, width: column - 10, fit: true);
+        }
+        if (settings.ShowGpuMemory)
+        {
+            DrawColumn(0, "专用显存", MemoryDisplay.Format(memory?.DedicatedBytes, memory?.DedicatedCapacityBytes, settings.VramDisplayMode));
+            DrawColumn(1, "共享内存", MemoryDisplay.Format(memory?.SharedBytes, memory?.SharedCapacityBytes, settings.VramDisplayMode));
+        }
+        if (settings.ShowVramTemperature)
+            DrawColumn(settings.ShowGpuMemory ? 2 : 0, "显存温度", memory?.VramCelsius is { } temperature ? $"{temperature:0.#} °C" : "—");
     }
-    private static string FormatGpuMemory(long? bytes) => bytes switch
-    {
-        null => "—",
-        < 1073741824 => $"{bytes.Value / 1048576d:0} MB",
-        _ => $"{bytes.Value / 1073741824d:0.0} GB"
-    };
+    public HardwareMetric GpuMetricAt(double x) => !settings.ShowGpuMemory || settings.ShowVramTemperature && x >= 230
+        ? HardwareMetric.VramTemperature
+        : x >= (settings.ShowVramTemperature ? 130 : 180) ? HardwareMetric.GpuShared : HardwareMetric.GpuDedicated;
     private void DrawNetwork(DrawingContext d, double y)
     {
         var n = state.Network;
@@ -293,7 +302,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     }
     private (string Icon, double? Value, string Tip)[] Metrics => new[] {
         ("cpu", state.System.CpuPercent, "CPU 总负载 · 最近 80 秒", settings.ShowCpu),
-        ("memory", state.System.MemoryPercent, "物理内存占用 · 最近 80 秒", settings.ShowMemory),
+        ("memory", state.System.MemoryPercent, "物理内存占用 · 最近 80 秒\n" + MemoryDisplay.Format(state.System.MemoryUsedBytes, state.System.MemoryTotalBytes, MemoryDisplayMode.Capacity), settings.ShowMemory),
         ("temperature", state.System.CpuCelsius, state.System.TemperatureStatus, settings.ShowTemperature)
     }.Where(v => v.Item4).Select(v => (v.Item1, v.Item2, v.Item3)).ToArray();
     private void DrawMetrics(DrawingContext d, double top)
@@ -303,7 +312,10 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         {
             double column = 300.0 / metrics.Length, x = 30 + i * column;
             var m = metrics[i]; Art.Icon(d, m.Icon, x, top + 13, 17, secondary, 1.05);
-            Text(d, m.Value is { } v ? $"{v:0}" + (m.Icon == "temperature" ? "°" : "%") : "—", x + 25, top + 3, 24, foreground, Dpi, width: column - 25);
+            bool capacity = m.Icon == "memory" && settings.RamDisplayMode == MemoryDisplayMode.Capacity;
+            string value = capacity ? MemoryDisplay.Format(state.System.MemoryUsedBytes, state.System.MemoryTotalBytes, settings.RamDisplayMode) :
+                m.Value is { } v ? $"{v:0}" + (m.Icon == "temperature" ? "°" : "%") : "—";
+            Text(d, value, x + 25, top + (capacity ? 9 : 3), capacity ? 15 : 24, foreground, Dpi, width: column - 25, fit: capacity);
             if (settings.ShowGraphs && !settings.CompactMode)
             {
                 if (m.Icon != "temperature") Sparkline(d, m.Icon == "cpu" ? state.CpuHistory.ToArray() : state.MemoryHistory.ToArray(), x + 1, top + 50, column - 25, 15, green, line);
@@ -364,7 +376,22 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         }
         if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip + (settings.PanelLocked ? "" : "\n单击查看历史曲线");
         if (area?.Kind == WidgetSection.GpuMemory)
-            tip = (state.GpuMemory is { } gpu ? $"{gpu.Source}\n专用显存 {FormatGpuMemory(gpu.DedicatedBytes)}\n共享内存 {FormatGpuMemory(gpu.SharedBytes)}" : "暂时无法读取显卡内存占用") + (settings.PanelLocked ? "" : "\n单击查看历史曲线");
+        {
+            var gpu = state.GpuMemory;
+            var metric = GpuMetricAt(p.X);
+            if (metric == HardwareMetric.VramTemperature)
+                tip = gpu?.VramCelsius is { } temp ? $"显存温度 {temp:0.#} °C\n{gpu.VramTemperatureSource}" : "显卡或驱动暂未提供显存温度读数";
+            else
+            {
+                bool shared = metric == HardwareMetric.GpuShared;
+                var used = shared ? gpu?.SharedBytes : gpu?.DedicatedBytes;
+                var total = shared ? gpu?.SharedCapacityBytes : gpu?.DedicatedCapacityBytes;
+                tip = $"{HardwareMetricInfo.Title(metric)} {MemoryDisplay.Format(used, total, MemoryDisplayMode.Capacity)}";
+                if (total is null && used is not null) tip += "\n总量不可用";
+                if (!string.IsNullOrEmpty(gpu?.Source)) tip += "\n" + gpu.Source;
+            }
+            if (!settings.PanelLocked) tip += "\n单击查看历史曲线";
+        }
         Cursor = !settings.PanelLocked && (area?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory) ? Cursors.Hand : Cursors.Arrow;
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
         if (area?.Kind == WidgetSection.Vocabulary) {

@@ -25,7 +25,11 @@ public sealed record Peripheral(
     public bool IsFresh(DateTimeOffset now) => ObservedAt is { } at && now >= at && now - at < TimeSpan.FromMinutes(3);
 }
 
-public sealed record SystemSnapshot(double? CpuPercent, double? MemoryPercent, double? CpuCelsius, string TemperatureStatus);
+public sealed record SystemSnapshot(double? CpuPercent, double? MemoryPercent, double? CpuCelsius, string TemperatureStatus)
+{
+    public long? MemoryUsedBytes { get; init; }
+    public long? MemoryTotalBytes { get; init; }
+}
 public sealed record WeatherHour(string Time, double Temperature, int Code, bool IsDay);
 public sealed record WeatherDay(string Date, double High, double Low, int Code);
 public sealed record WeatherSnapshot(double Celsius, int Code, bool IsDay, double High, double Low,

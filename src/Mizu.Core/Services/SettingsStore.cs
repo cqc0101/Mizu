@@ -6,6 +6,9 @@ namespace Mizu.Core.Services;
 
 public sealed class AppSettings
 {
+    public const int DefaultVocabularyMeaningFontSize = 12;
+    public const int MinimumVocabularyMeaningFontSize = 8;
+    public const int MaximumVocabularyMeaningFontSize = 28;
     public int SchemaVersion { get; set; } = 1;
     public bool AutoCheckUpdates { get; set; } = true;
     public bool ReceivePreviewUpdates { get; set; } = true;
@@ -28,6 +31,9 @@ public sealed class AppSettings
     public bool ShowMemory { get; set; } = true;
     public bool ShowTemperature { get; set; } = true;
     public bool ShowGpuMemory { get; set; }
+    public MemoryDisplayMode RamDisplayMode { get; set; } = MemoryDisplayMode.Percentage;
+    public MemoryDisplayMode VramDisplayMode { get; set; } = MemoryDisplayMode.Capacity;
+    public bool ShowVramTemperature { get; set; }
     public bool RecordHardwareHistory { get; set; } = true;
     public bool ShowNetwork { get; set; }
     public bool ShowMedia { get; set; }
@@ -46,6 +52,7 @@ public sealed class AppSettings
     public int? VocabularyIntervalMinutes { get; set; }
     [System.Text.Json.Serialization.JsonIgnore] public int VocabularyMinutes => Math.Clamp(VocabularyIntervalMinutes ?? (int)Math.Ceiling(VocabularyIntervalSeconds / 60d), 1, 720);
     public bool VocabularyHideMeaning { get; set; }
+    public int VocabularyMeaningFontSize { get; set; } = DefaultVocabularyMeaningFontSize;
     public int VocabularySpacing { get; set; } = 8;
     public bool HideInactiveDevices { get; set; }
     public bool ShowWiredKeyboards { get; set; }
@@ -87,6 +94,8 @@ public sealed class AppSettings
 
     public void Validate()
     {
+        if (!Enum.IsDefined(RamDisplayMode)) RamDisplayMode = MemoryDisplayMode.Percentage;
+        if (!Enum.IsDefined(VramDisplayMode)) VramDisplayMode = MemoryDisplayMode.Capacity;
         if (!System.Net.IPAddress.TryParse(NetworkProbeTarget, out var probe) || probe.Equals(System.Net.IPAddress.Any) || probe.Equals(System.Net.IPAddress.IPv6Any)) NetworkProbeTarget = "1.1.1.1";
         NetworkProbeTargets = (NetworkProbeTargets ?? new List<string> { NetworkProbeTarget }).Select(NetworkService.NormalizeTarget).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToList();
         if (NetworkProbeTargets.Count > 0) NetworkProbeTarget = NetworkProbeTargets[0];
@@ -97,6 +106,7 @@ public sealed class AppSettings
         CornerRadius = double.IsFinite(CornerRadius) ? Math.Clamp(CornerRadius, 0, 64) : 30;
         PoetryLines = 1; // Kept only for compatibility with earlier settings files.
         VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, 12);
+        VocabularyMeaningFontSize = Math.Clamp(VocabularyMeaningFontSize, MinimumVocabularyMeaningFontSize, MaximumVocabularyMeaningFontSize);
         VocabularySpacing = Math.Clamp(VocabularySpacing, 0, 40);
         SectionOrder = (SectionOrder ?? []).Where(s => Enum.IsDefined(s)).Distinct().Concat(new AppSettings().SectionOrder).Distinct().ToList();
         VocabularyIntervalMinutes = VocabularyMinutes;

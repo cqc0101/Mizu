@@ -123,6 +123,7 @@ public sealed class SettingsWindow : Window
         var grid = new Grid { Margin = new(0, 8, 0, 15) }; grid.ColumnDefinitions.Add(new() { Width = new(112) }); grid.ColumnDefinitions.Add(new()); grid.ColumnDefinitions.Add(new() { Width = new(58) });
         var label = Label(title); label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new(0); grid.Children.Add(label);
         var slider = new Slider { Minimum = min, Maximum = max, Value = value, TickFrequency = step, SmallChange = step, IsSnapToTickEnabled = !continuous, VerticalAlignment = VerticalAlignment.Center, Margin = new(4, 0, 12, 0), ToolTip = null };
+        System.Windows.Automation.AutomationProperties.SetName(slider, title);
         Grid.SetColumn(slider, 1); grid.Children.Add(slider);
         var number = new TextBlock { Text = value.ToString(format), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, Foreground = theme.Brush("#87917C") };
         Grid.SetColumn(number, 2); grid.Children.Add(number);
@@ -188,8 +189,12 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Toggle("外设电量", settings.ShowDevices, v => { settings.ShowDevices = v; Save(); }));
         panel.Children.Add(Toggle("CPU 负载", settings.ShowCpu, v => { settings.ShowCpu = v; Save(); }));
         panel.Children.Add(Toggle("内存占用", settings.ShowMemory, v => { settings.ShowMemory = v; Save(); }));
+        panel.Children.Add(MemoryModePicker("内存显示格式", settings.RamDisplayMode, v => settings.RamDisplayMode = v));
         panel.Children.Add(Toggle("CPU 温度", settings.ShowTemperature, v => { settings.ShowTemperature = v; Save(); }));
         panel.Children.Add(Toggle("显卡显存占用", settings.ShowGpuMemory, v => { settings.ShowGpuMemory = v; Save(); }));
+        panel.Children.Add(MemoryModePicker("显存显示格式", settings.VramDisplayMode, v => settings.VramDisplayMode = v));
+        panel.Children.Add(Toggle("显存温度", settings.ShowVramTemperature, v => { settings.ShowVramTemperature = v; Save(); }));
+        panel.Children.Add(Label("显存温度取决于显卡和驱动提供的传感器。", true));
         panel.Children.Add(Toggle("记录硬件历史", settings.RecordHardwareHistory, v => { settings.RecordHardwareHistory = v; Save(); }));
         panel.Children.Add(Label("保留已开启指标最近 1 小时的曲线，退出后清空。单击组件的硬件区域即可查看。", true));
         panel.Children.Add(ActionButton("查看历史曲线", (_, _) => widget.OpenHardwareHistory()));
@@ -259,6 +264,16 @@ public sealed class SettingsWindow : Window
         orderActions.Children.Add(ActionButton("上移", (_, _) => Shift(-1))); orderActions.Children.Add(ActionButton("下移", (_, _) => Shift(1))); panel.Children.Add(orderActions);
         panel.Children.Add(Label("设置即时生效并自动保存。关闭显示只影响组件内容，已启用的阈值提醒继续工作。内容较多时可手动缩小或关闭部分模块。", true));
         return panel;
+    }
+    private UIElement MemoryModePicker(string title, MemoryDisplayMode mode, Action<MemoryDisplayMode> apply)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, 0, 9) };
+        row.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center, Margin = new(0, 0, 12, 0) });
+        var picker = new ComboBox { ItemsSource = new[] { "百分比", "已用 / 总量" }, SelectedIndex = (int)mode, Width = 132 };
+        System.Windows.Automation.AutomationProperties.SetName(picker, title);
+        picker.SelectionChanged += (_, _) => { if (picker.SelectedIndex >= 0) { apply((MemoryDisplayMode)picker.SelectedIndex); Save(); } };
+        row.Children.Add(picker);
+        return row;
     }
     private void BuildSectionOrder()
     {
@@ -407,6 +422,8 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Toggle("在组件上显示单词本", settings.ShowVocabulary, v => { settings.ShowVocabulary = v; Save(); }));
         panel.Children.Add(SliderRow("显示组数", settings.VocabularyVisibleRows, 1, 12, 1, "0' 组'", v => { settings.VocabularyVisibleRows = (int)v; Save(); }));
         panel.Children.Add(SliderRow("单词间距", settings.VocabularySpacing, 0, 40, 1, "0' px'", v => { settings.VocabularySpacing = (int)v; Save(); }));
+        panel.Children.Add(SliderRow("中文释义字号", settings.VocabularyMeaningFontSize, AppSettings.MinimumVocabularyMeaningFontSize,
+            AppSettings.MaximumVocabularyMeaningFontSize, 1, "0", v => { settings.VocabularyMeaningFontSize = (int)v; Save(); }));
         panel.Children.Add(Toggle("随机轮换（关闭则按录入顺序）", settings.VocabularyRandom, v => { settings.VocabularyRandom = v; Save(); }));
         panel.Children.Add(SliderRow("轮换间隔", settings.VocabularyMinutes, 1, 720, 1, "0' 分钟'", v => { settings.VocabularyIntervalMinutes = (int)v; Save(); }));
         panel.Children.Add(Toggle("隐藏中文释义（包括悬停提示）", settings.VocabularyHideMeaning, v => { settings.VocabularyHideMeaning = v; Save(); }));

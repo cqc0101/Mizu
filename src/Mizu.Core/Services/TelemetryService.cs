@@ -31,7 +31,13 @@ public sealed class TelemetryService : IDisposable
             previousTotal = total; previousIdle = idle.Value;
         }
         var ms = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
-        if (GlobalMemoryStatusEx(ref ms) && ms.TotalPhysical > 0) memory = 100.0 * (ms.TotalPhysical - ms.AvailablePhysical) / ms.TotalPhysical;
+        long? usedBytes = null, totalBytes = null;
+        if (GlobalMemoryStatusEx(ref ms) && ms.TotalPhysical is > 0 and <= long.MaxValue && ms.AvailablePhysical <= ms.TotalPhysical)
+        {
+            totalBytes = (long)ms.TotalPhysical;
+            usedBytes = (long)(ms.TotalPhysical - ms.AvailablePhysical);
+            memory = MemoryDisplay.Percentage(usedBytes, totalBytes);
+        }
         string status = "在设置中启用 CPU 温度读取";
         if (!temperatureEnabled && computer is not null) { computer.Close(); computer = null; temperatureAttempted = false; }
         if (temperatureEnabled)
@@ -60,7 +66,7 @@ public sealed class TelemetryService : IDisposable
                 catch (Exception ex) { status = "CPU 温度不可用"; AppLog.Write("temperature", ex.GetType().Name); }
             }
         }
-        return new(cpu, memory, celsius, status);
+        return new(cpu, memory, celsius, status) { MemoryUsedBytes = usedBytes, MemoryTotalBytes = totalBytes };
     }
     private static void Update(IHardware hardware, List<(string, float)> result)
     {

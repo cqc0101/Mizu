@@ -188,7 +188,7 @@ public sealed class WidgetEngine(AppSettings settings, WidgetState state, Action
         {
             do
             {
-                if (!settings.ShowGpuMemory)
+                if (!settings.ShowGpuMemory && !settings.ShowVramTemperature)
                 {
                     if (reader is null) continue;
                     reader.Dispose();
@@ -197,10 +197,10 @@ public sealed class WidgetEngine(AppSettings settings, WidgetState state, Action
                     continue;
                 }
                 reader ??= new GpuMemoryReader();
-                var result = await reader.SampleAsync(stop.Token);
+                var result = await reader.SampleAsync(settings.ShowGpuMemory, settings.ShowVramTemperature, stop.Token);
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    if (stop.IsCancellationRequested || !settings.ShowGpuMemory) return;
+                    if (stop.IsCancellationRequested || (!settings.ShowGpuMemory && !settings.ShowVramTemperature)) return;
                     state.HardwareHistory.RecordGpu(DateTimeOffset.UtcNow, result, settings);
                     if (state.GpuMemory == result) return;
                     state.GpuMemory = result;

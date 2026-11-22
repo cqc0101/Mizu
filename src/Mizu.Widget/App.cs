@@ -67,7 +67,8 @@ public sealed class App : Application
     private int Smoke(string directory)
     {
         directory = Path.GetFullPath(directory); Directory.CreateDirectory(directory);
-        var window = new MainWindow(new AppSettings { ShowNetwork = true, ShowMedia = true, ShowPoetry = true, ShowGpuMemory = true, Location = new SettingsStore().Load().Location }, persistSettings: false); MainWindow = window;
+        var window = new MainWindow(new AppSettings { ShowNetwork = true, ShowMedia = true, ShowPoetry = true, ShowGpuMemory = true,
+            ShowVramTemperature = true, RamDisplayMode = MemoryDisplayMode.Capacity, Location = new SettingsStore().Load().Location }, persistSettings: false); MainWindow = window;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
         timer.Tick += async (_, _) =>
         {

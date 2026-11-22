@@ -136,7 +136,7 @@ public sealed class MainWindow : Window
             if (hardwareArea?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory)
             {
                 var metrics = new[] { HardwareMetric.Cpu, HardwareMetric.Memory, HardwareMetric.CpuTemperature }.Where(m => HardwareMetricInfo.Enabled(m, Settings)).ToArray();
-                HardwareMetric? metric = hardwareArea.Kind == WidgetSection.GpuMemory ? HardwareMetric.GpuDedicated :
+                HardwareMetric? metric = hardwareArea.Kind == WidgetSection.GpuMemory ? Surface.GpuMetricAt(point.X) :
                     metrics.Length == 0 ? null : metrics[Math.Clamp((int)((point.X - 30) / (300.0 / metrics.Length)), 0, metrics.Length - 1)];
                 var origin = new Point(Left, Top);
                 try { DragMove(); } catch (InvalidOperationException) { }

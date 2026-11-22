@@ -10,12 +10,14 @@ public static class HardwareMetricInfo
 {
     public static string Title(HardwareMetric metric) => metric switch {
         HardwareMetric.Cpu => "CPU 负载", HardwareMetric.Memory => "内存占用",
-        HardwareMetric.CpuTemperature => "CPU 温度", HardwareMetric.GpuDedicated => "专用显存", _ => "共享 GPU 内存"
+        HardwareMetric.CpuTemperature => "CPU 温度", HardwareMetric.GpuDedicated => "专用显存",
+        HardwareMetric.VramTemperature => "显存温度", _ => "共享 GPU 内存"
     };
     public static bool IsBytes(HardwareMetric metric) => metric is HardwareMetric.GpuDedicated or HardwareMetric.GpuShared;
+    public static bool IsTemperature(HardwareMetric metric) => metric is HardwareMetric.CpuTemperature or HardwareMetric.VramTemperature;
     public static (string Value, string Unit) Format(HardwareMetric metric, double? value)
     {
-        string unit = IsBytes(metric) ? "MB" : metric == HardwareMetric.CpuTemperature ? "°C" : "%";
+        string unit = IsBytes(metric) ? "MB" : IsTemperature(metric) ? "°C" : "%";
         if (value is not { } v) return ("—", unit);
         if (IsBytes(metric)) return v >= 1073741824 ? ((v / 1073741824).ToString("0.00", CultureInfo.CurrentCulture), "GB")
             : ((v / 1048576).ToString("0", CultureInfo.CurrentCulture), "MB");
@@ -23,7 +25,7 @@ public static class HardwareMetricInfo
     }
     public static bool Enabled(HardwareMetric metric, AppSettings settings) => metric switch {
         HardwareMetric.Cpu => settings.ShowCpu, HardwareMetric.Memory => settings.ShowMemory,
-        HardwareMetric.CpuTemperature => settings.ShowTemperature, _ => settings.ShowGpuMemory
+        HardwareMetric.CpuTemperature => settings.ShowTemperature, HardwareMetric.VramTemperature => settings.ShowVramTemperature, _ => settings.ShowGpuMemory
     };
 }
 
@@ -61,9 +63,9 @@ public sealed class HardwareHistoryChart : FrameworkElement
         var valid = Samples.Where(s => s.Value.HasValue).ToArray();
         double max = valid.Length == 0 ? 0 : valid.Max(s => s.Value!.Value);
         double divisor = HardwareMetricInfo.IsBytes(Metric) ? max >= 1073741824 ? 1073741824 : 1048576 : 1;
-        var unit = HardwareMetricInfo.IsBytes(Metric) ? divisor == 1073741824 ? "GB" : "MB" : Metric == HardwareMetric.CpuTemperature ? "°C" : "%";
+        var unit = HardwareMetricInfo.IsBytes(Metric) ? divisor == 1073741824 ? "GB" : "MB" : HardwareMetricInfo.IsTemperature(Metric) ? "°C" : "%";
         double ceiling = Metric is HardwareMetric.Cpu or HardwareMetric.Memory ? 100 :
-            Metric == HardwareMetric.CpuTemperature ? Math.Max(100, NiceCeiling(max * 1.12)) : NiceCeiling(Math.Max(1, max / divisor * 1.12));
+            HardwareMetricInfo.IsTemperature(Metric) ? Math.Max(100, NiceCeiling(max * 1.12)) : NiceCeiling(Math.Max(1, max / divisor * 1.12));
         Text(unit, 2, 6, 10, secondary);
         for (int i = 0; i <= 4; i++) {
             double y = plot.Top + plot.Height * i / 4;

@@ -11,6 +11,21 @@ var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
 var monitorSettings = new AppSettings { TemperatureEnabled = true, ShowGpuMemory = true };
+const long gib = 1024L * 1024 * 1024;
+Check(MemoryDisplay.Percentage(gib, 4 * gib) == 25 && MemoryDisplay.Percentage(0, 4 * gib) == 0, "Capacity percentage distinguishes zero usage from missing readings");
+Check(MemoryDisplay.Percentage(gib, null) is null && MemoryDisplay.Percentage(gib, 0) is null && MemoryDisplay.Percentage(2 * gib, gib) is null,
+    "Missing, zero or inconsistent memory capacities never produce a misleading percentage");
+var ramReading = new TelemetryService().Sample(false);
+Check(ramReading.MemoryTotalBytes is > 0 && ramReading.MemoryUsedBytes >= 0 &&
+      ramReading.MemoryPercent == MemoryDisplay.Percentage(ramReading.MemoryUsedBytes, ramReading.MemoryTotalBytes),
+    "Physical RAM capacity and percentage come from the same Windows sample");
+var tempSettings = new AppSettings { ShowVramTemperature = true, ShowGpuMemory = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false };
+var tempHistory = new HardwareHistory();
+tempHistory.RecordGpu(now, new(null, null, null, "") { VramCelsius = 62.5 }, tempSettings);
+tempHistory.RecordGpu(now.AddSeconds(5), null, tempSettings);
+Check(tempHistory.Read(HardwareMetric.VramTemperature, now.AddSeconds(5), HardwareHistory.Retention).Select(s => s.Value).SequenceEqual(new double?[] {62.5, null}) &&
+    tempHistory.Read(HardwareMetric.GpuDedicated, now.AddSeconds(5), HardwareHistory.Retention).Count == 0,
+    "VRAM temperature records independently and unsupported samples leave gaps");
 var hardware = new HardwareHistory();
 hardware.RecordSystem(now, new(24, 48, 53, ""), monitorSettings);
 hardware.RecordSystem(now.AddSeconds(2), new(null, 49, null, ""), monitorSettings);
@@ -285,10 +300,11 @@ try
     poemSettings.ShowPoetry = false;
     Check(!WidgetLayout.Calculate(poemSettings).Sections.Any(s => s.Kind == WidgetSection.Poetry), "Poetry can be removed from layout");
     var store = new SettingsStore(Path.Combine(temp, "settings.json"));
-    var customOrder=new AppSettings {Scale=.4,ShowClock=true,HideInactiveDevices=true,VocabularySpacing=0,SectionOrder=[WidgetSection.Vocabulary,WidgetSection.Clock,WidgetSection.Vocabulary,(WidgetSection)999]};
+    var customOrder=new AppSettings {Scale=.4,ShowClock=true,HideInactiveDevices=true,VocabularySpacing=0,VocabularyMeaningFontSize=21,SectionOrder=[WidgetSection.Vocabulary,WidgetSection.Clock,WidgetSection.Vocabulary,(WidgetSection)999]};
     store.Save(customOrder);var ordered=store.Load();
     Check(ordered.SectionOrder.Count==Enum.GetValues<WidgetSection>().Length && ordered.SectionOrder[0]==WidgetSection.Vocabulary && ordered.SectionOrder.Distinct().Count()==ordered.SectionOrder.Count,"Custom order reloads, drops invalid duplicates and appends missing modules");
     Check(ordered.Scale==.4 && ordered.HideInactiveDevices && ordered.VocabularySpacing==0,"Small scale, activity filter and tight spacing survive disk reload");
+    Check(ordered.VocabularyMeaningFontSize==21,"Vocabulary meaning font size survives disk reload");
     ordered.Vocabulary=[new(){Word="first"},new(){Word="second"}];ordered.ShowVocabulary=true;ordered.ShowClock=true;
     Check(WidgetLayout.Calculate(ordered).Sections[0].Kind==WidgetSection.Vocabulary,"Custom module order affects actual widget geometry");
     ordered.VocabularyVisibleRows=2;ordered.VocabularyHideMeaning=true;

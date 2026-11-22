@@ -9,7 +9,13 @@ public sealed record SectionLayout(WidgetSection Kind, double Top, double Height
 }
 public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
 {
-    public static double VocabularyRowHeight(AppSettings s) => (s.VocabularyHideMeaning ? 34 : 58) + s.VocabularySpacing;
+    public const double VocabularyMeaningTop = 34;
+    public static double VocabularyRowHeight(AppSettings s)
+    {
+        if (s.VocabularyHideMeaning) return VocabularyMeaningTop + s.VocabularySpacing;
+        // Reserve line height for CJK fallback fonts at the maximum global text scale.
+        return 58 + (s.VocabularyMeaningFontSize - AppSettings.DefaultVocabularyMeaningFontSize) * 1.5 + s.VocabularySpacing;
+    }
     public static WidgetLayout Interpolate(WidgetLayout from, WidgetLayout to, double progress)
     {
         double height = Mix(from.Height, to.Height, progress);
@@ -79,7 +85,7 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         }
         if (s.ShowDevices) Add(WidgetSection.Devices, Math.Clamp(deviceCount, 0, 2) * (s.CompactMode ? 56 : 78));
         if (s.ShowCpu || s.ShowMemory || s.ShowTemperature) Add(WidgetSection.Metrics, s.CompactMode || !s.ShowGraphs ? 52 : 84);
-        if (s.ShowGpuMemory) Add(WidgetSection.GpuMemory, 56);
+        if (s.ShowGpuMemory || s.ShowVramTemperature) Add(WidgetSection.GpuMemory, 56);
         if (s.ShowNetwork) Add(WidgetSection.Network, 60 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 52 : 32));
         if (s.ShowMedia) Add(WidgetSection.Media, 104);
         if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);

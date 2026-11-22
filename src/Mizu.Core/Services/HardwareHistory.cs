@@ -1,6 +1,6 @@
 namespace Mizu.Core.Services;
 
-public enum HardwareMetric { Cpu, Memory, CpuTemperature, GpuDedicated, GpuShared }
+public enum HardwareMetric { Cpu, Memory, CpuTemperature, GpuDedicated, GpuShared, VramTemperature }
 public readonly record struct HardwareSample(DateTimeOffset Time, double? Value, bool StartsSegment = false);
 
 // Owned by the UI dispatcher. Bounded, session-only storage; no extra hardware polling.
@@ -35,14 +35,19 @@ public sealed class HardwareHistory
     {
         ApplySettings(settings);
         Prune(time);
-        if (!settings.RecordHardwareHistory || !settings.ShowGpuMemory) return;
-        Append(HardwareMetric.GpuDedicated, time, snapshot?.DedicatedBytes is >= 0 ? snapshot.DedicatedBytes : null);
-        Append(HardwareMetric.GpuShared, time, snapshot?.SharedBytes is >= 0 ? snapshot.SharedBytes : null);
+        if (!settings.RecordHardwareHistory) return;
+        if (settings.ShowGpuMemory)
+        {
+            Append(HardwareMetric.GpuDedicated, time, snapshot?.DedicatedBytes is >= 0 ? snapshot.DedicatedBytes : null);
+            Append(HardwareMetric.GpuShared, time, snapshot?.SharedBytes is >= 0 ? snapshot.SharedBytes : null);
+        }
+        if (settings.ShowVramTemperature)
+            Append(HardwareMetric.VramTemperature, time, snapshot?.VramCelsius is > 0 and <= 150 ? snapshot.VramCelsius : null);
         Changed?.Invoke();
     }
 
     public static bool MonitoringEnabled(AppSettings settings) =>
-        settings.ShowCpu || settings.ShowMemory || settings.ShowTemperature || settings.ShowGpuMemory;
+        settings.ShowCpu || settings.ShowMemory || settings.ShowTemperature || settings.ShowGpuMemory || settings.ShowVramTemperature;
 
     public void ApplySettings(AppSettings settings)
     {
@@ -51,6 +56,7 @@ public sealed class HardwareHistory
                 HardwareMetric.Cpu => settings.ShowCpu,
                 HardwareMetric.Memory => settings.ShowMemory,
                 HardwareMetric.CpuTemperature => settings.ShowTemperature && settings.TemperatureEnabled,
+                HardwareMetric.VramTemperature => settings.ShowVramTemperature,
                 _ => settings.ShowGpuMemory
             };
             if (!settings.RecordHardwareHistory || !enabled) entry.Value.BreakBeforeNext = true;

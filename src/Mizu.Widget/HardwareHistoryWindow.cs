@@ -163,6 +163,8 @@ public sealed class HardwareHistoryWindow : Window
         chart.Update(selected, samples, now, TimeSpan.FromMinutes(minutes), ThemePalette.Get(settings.Theme));
         note.Text = selected == HardwareMetric.CpuTemperature && !settings.TemperatureEnabled
             ? "温度读取尚未开启，可在设置中启用；无法读取时保留空缺。"
+            : selected == HardwareMetric.VramTemperature && values.Length == 0
+                ? "显存温度需要显卡和驱动提供读数；暂不可用时保留空缺。"
             : selected == HardwareMetric.GpuShared && values.Length == 0
                 ? "共享 GPU 内存需要驱动提供读数；当前不可用时保留空缺。"
                 : "悬停曲线查看时间与读数  ·  历史仅保存在内存中，退出后清空。";
