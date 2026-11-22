@@ -33,6 +33,7 @@ public sealed class App : Application
             if (args.Length == 2 && args[0] == "--render-preview") { PreviewRenderer.Render(args[1]); return 0; }
             app.DispatcherUnhandledException += (_, e) => { AppLog.Write("ui.unhandled", e.Exception.GetType().Name); };
             if (args.Length == 2 && args[0] == "--smoke") return app.Smoke(args[1]);
+            if (UpdateStartup.ResumeInterrupted(args)) return 0;
             using var identity = WindowsIdentity.GetCurrent();
             app.singleInstance = new(false, "Local\\Mizu." + identity.User?.Value);
             bool acquired;
@@ -49,6 +50,7 @@ public sealed class App : Application
                 // must always leave the widget visible and directly recoverable.
                 if (args.Contains("--startup")) settings.ClickThrough = false;
                 var window = new MainWindow(settings); app.MainWindow = window;
+                UpdateStartup.Attach(window, args);
                 if (settings.AutoStart)
                 {
                     try { NativeWindow.SetAutoStart(true); }

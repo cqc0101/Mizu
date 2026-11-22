@@ -7,6 +7,9 @@ namespace Mizu.Core.Services;
 public sealed class AppSettings
 {
     public int SchemaVersion { get; set; } = 1;
+    public bool AutoCheckUpdates { get; set; } = true;
+    public bool ReceivePreviewUpdates { get; set; } = true;
+    public DateTimeOffset? LastUpdateCheckUtc { get; set; }
     public double? Left { get; set; }
     public double? Top { get; set; }
     public double Scale { get; set; } = 1;

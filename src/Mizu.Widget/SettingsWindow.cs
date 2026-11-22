@@ -37,6 +37,8 @@ public sealed class SettingsWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private readonly System.Windows.Threading.DispatcherTimer saveDelay = new() { Interval = TimeSpan.FromMilliseconds(350) };
     private bool adjustingSlider, pendingSave;
+    private Action? refreshUpdates;
+    private TabControl? navigation;
     public SettingsWindow(MainWindow widget)
     {
         this.widget = widget; settings = widget.Settings;
@@ -81,17 +83,19 @@ public sealed class SettingsWindow : Window
         heading.Children.Add(new TextBlock { Text = "Mizu", FontSize = 28, FontWeight = FontWeights.Light });
         heading.Children.Add(new TextBlock { Text = "偏好设置", Margin = new(1, 5, 0, 0), Foreground = theme.Brush("#8D9487"), FontSize = 12 }); root.Children.Add(heading);
         var tabs = new TabControl { Background = Brushes.Transparent, BorderThickness = new(0), TabStripPlacement = Dock.Left };
+        navigation = tabs;
         AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push()); AddTab(tabs, "单词本", Vocabulary()); AddTab(tabs, "关于", About());
         Grid.SetRow(tabs, 1); root.Children.Add(tabs); Grid.SetRow(status, 2); root.Children.Add(status); Content = root;
         saveDelay.Tick += (_, _) => FlushPendingSave();
         widget.SettingsApplied += RefreshTheme;
-        Closed += (_, _) => { widget.SettingsApplied -= RefreshTheme; FlushPendingSave(); lifetime.Cancel(); lifetime.Dispose(); };
+        Closed += (_, _) => { widget.SettingsApplied -= RefreshTheme; if (refreshUpdates is not null) widget.Updates.Changed -= refreshUpdates; FlushPendingSave(); lifetime.Cancel(); lifetime.Dispose(); };
         SourceInitialized += (_, _) => theme.Apply(settings.Theme);
         BuildDevices(); BuildTodoList();
         Activated += (_, _) => { BuildDevices(); BuildTodoList(); };
     }
     private void AddTab(TabControl tabs, string title, UIElement content) => tabs.Items.Add(new TabItem
     { Header = new TextBlock { Text = title, Margin = new(16, 13, 16, 13) }, Content = new Border { Background = theme.Brush("#FCFCF8"), CornerRadius = new(18), Padding = new(24, 20, 15, 16), Child = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } } });
+    public void ShowUpdates() { if (navigation is not null) navigation.SelectedIndex = navigation.Items.Count - 1; }
     private TextBlock Label(string text, bool detail = false) => new() { Text = text, FontSize = detail ? 12 : 13, TextWrapping = TextWrapping.Wrap,
         Foreground = theme.Brush(detail ? "#8A9183" : "#434B3E"), Margin = new(0, 0, 0, detail ? 15 : 9), LineHeight = detail ? 20 : double.NaN };
     private Button ActionButton(string text, RoutedEventHandler action)
@@ -585,6 +589,7 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(new TextBlock { Text = "Mizu", FontSize = 36, FontWeight = FontWeights.Light, Margin = new(0, 0, 0, 8) });
         var version = typeof(App).Assembly.GetName().Version;
         panel.Children.Add(Label($"v{version?.ToString(3) ?? "—"} · 预览版 · {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}", true));
+        panel.Children.Add(UpdateControls());
         var history = new StackPanel();
         using (var stream = typeof(App).Assembly.GetManifestResourceStream("Mizu.Changelog"))
         {
@@ -623,6 +628,40 @@ public sealed class SettingsWindow : Window
         licenses.Children.Add(ActionButton("开源许可", (_, _) => Open(project + "/blob/main/LICENSE")));
         licenses.Children.Add(ActionButton("第三方声明", (_, _) => Open(project + "/blob/main/THIRD-PARTY-NOTICES.md")));
         panel.Children.Add(licenses);
+        return panel;
+    }
+    private UIElement UpdateControls()
+    {
+        var panel = new StackPanel { Margin = new(0, 0, 0, 9) };
+        panel.Children.Add(Toggle("自动检查更新", settings.AutoCheckUpdates, value => { settings.AutoCheckUpdates = value; Save(); }));
+        var previews = Toggle("接收预览版更新", settings.ReceivePreviewUpdates, value => { settings.ReceivePreviewUpdates = value; Save(); });
+        panel.Children.Add(previews);
+        panel.Children.Add(Label("自动检查只提示新版本。选择下载并重启后完成更新，保留设置、待办和单词本。", true));
+        var message = Label(widget.Updates.Message, true); message.Margin = new(0, 7, 0, 8); panel.Children.Add(message);
+        var progress = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4, Foreground = theme.Brush("#8B9F7F"), Background = theme.Brush("#E7EBE1"), BorderThickness = new(0), Margin = new(0, 2, 0, 10) };
+        panel.Children.Add(progress);
+        var actions = new WrapPanel();
+        var check = ActionButton("检查更新", async (_, _) => await widget.Updates.CheckAsync());
+        var apply = ActionButton("下载并重启更新", async (_, _) => await widget.Updates.DownloadAndApplyAsync());
+        var cancel = ActionButton("取消下载", (_, _) => widget.Updates.CancelDownload());
+        var notes = ActionButton("更新说明", (_, _) => {
+            if (widget.Updates.Available is { } update) {
+                try { Process.Start(new ProcessStartInfo(update.Page.AbsoluteUri) { UseShellExecute = true }); }
+                catch { status.Text = "无法打开更新说明。"; }
+            }
+        });
+        foreach (var button in new[] { check, apply, cancel, notes }) actions.Children.Add(button);
+        panel.Children.Add(actions);
+        refreshUpdates = () => {
+            var model = widget.Updates;
+            message.Text = model.Message; progress.IsIndeterminate = model.Checking; progress.Value = model.Progress * 100;
+            progress.Visibility = model.Checking || model.Downloading ? Visibility.Visible : Visibility.Collapsed;
+            check.IsEnabled = !model.Checking && !model.Downloading; previews.IsEnabled = !model.Downloading;
+            apply.Visibility = model.Available is not null && !model.Downloading && !model.Checking ? Visibility.Visible : Visibility.Collapsed;
+            notes.Visibility = model.Available is not null ? Visibility.Visible : Visibility.Collapsed;
+            cancel.Visibility = model.Downloading ? Visibility.Visible : Visibility.Collapsed;
+        };
+        widget.Updates.Changed += refreshUpdates; refreshUpdates();
         return panel;
     }
     private UIElement Push()

@@ -13,8 +13,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
 dotnet publish $project -c Release -r $Runtime --self-contained true --no-restore -p:PublishSingleFile=false -p:PublishTrimmed=false -o $appDirectory --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe'
-& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.Windows.Forms.dll "/out:$OutputDirectory\Mizu.exe" "/win32icon:$projectRoot\src\Mizu.Widget\Assets\mizu.ico" (Join-Path $projectRoot 'src\Mizu.Launcher\Launcher.cs')
+& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll "/out:$OutputDirectory\Mizu.exe" "/win32icon:$projectRoot\src\Mizu.Widget\Assets\mizu.ico" (Join-Path $projectRoot 'src\Mizu.Launcher\Launcher.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed' }
+& (Join-Path $PSScriptRoot 'build_updater.ps1') -OutputDirectory $appDirectory
+@{ Format=1; Runtime=$Runtime; Kind='portable' } | ConvertTo-Json | Set-Content (Join-Path $appDirectory 'mizu-package.json') -Encoding utf8
 $infoDirectory = Join-Path $OutputDirectory '说明与许可'
 New-Item -ItemType Directory $infoDirectory -Force | Out-Null
 foreach ($name in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','licenses','docs')) {

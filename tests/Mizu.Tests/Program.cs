@@ -397,6 +397,7 @@ using(var disabledBackup = new WeatherService(disabledHandler)) {
 }
 Check(WttrWeather.ToWmo(113) == 0 && WttrWeather.ToWmo(143) == 45 && WttrWeather.ToWmo(149) == 45 && WttrWeather.ToWmo(389) == 95, "Backup weather codes normalize to existing icons");
 Check(WttrWeather.ToWmo(9999) == -1, "Unknown backup conditions stay unknown instead of turning into sunshine");
+count += await UpdateChecks.RunAsync();
 Console.WriteLine($"PASS {count} checks. No external notification was sent.");
 return 0;
 } catch(Exception error) { Console.Error.WriteLine(error); return 1; }

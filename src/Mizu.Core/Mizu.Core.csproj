@@ -5,4 +5,5 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup><None Include="Devices/atk-catalog.json" CopyToOutputDirectory="PreserveNewest" Link="atk-catalog.json" /></ItemGroup>
+  <ItemGroup><Compile Include="../Mizu.Updater/PackageArchive.cs" Link="Services/PackageArchive.cs" /></ItemGroup>
 </Project>

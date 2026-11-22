@@ -21,6 +21,7 @@ public sealed class MainWindow : Window
     public WidgetState State { get; }
     public WidgetSurface Surface { get; }
     public WidgetEngine Engine { get; }
+    public UpdateCoordinator Updates { get; }
     private readonly SettingsStore store;
     private readonly System.Windows.Forms.NotifyIcon tray;
     private readonly StackPanel toolbar;
@@ -92,6 +93,7 @@ public sealed class MainWindow : Window
         layout.RenderTransform = widgetScale;
         var stage = new Canvas(); stage.Children.Add(layout); Content = stage;
         Engine = new(settings, State, OnStateChanged);
+        Updates = new(this, !preview && persistSettings);
         tray = new() { Text = "Mizu", Icon = AppIcons.CreateTrayIcon(), Visible = !preview };
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 收起", null, (_, _) => ToggleVisible());
@@ -100,6 +102,7 @@ public sealed class MainWindow : Window
         menu.Items.Add("穿透鼠标 · Ctrl+Alt+M 恢复", null, (_, _) => Dispatcher.Invoke(() => { Settings.ClickThrough = !Settings.ClickThrough; ApplySettings(); SaveSettings(); }));
         menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(async () => await QuitAsync()));
         tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Dispatcher.Invoke(ToggleVisible);
+        tray.BalloonTipClicked += (_, _) => Dispatcher.Invoke(() => { OpenSettings(); settingsWindow?.ShowUpdates(); });
         SourceInitialized += (_, _) =>
         {
             ApplySettings();
@@ -113,6 +116,7 @@ public sealed class MainWindow : Window
             RestorePosition();
             if (!preview) Engine.Start();
             if (!preview) displayTimer.Start();
+            Updates.Start();
         };
         displayTimer.Tick += (_, _) => {
             if (themeRotation.Update(Settings, DateTimeOffset.UtcNow, ThemePalette.All.Select(p => p.Id))) { ApplySettings(); SaveSettings(); }
@@ -327,6 +331,7 @@ public sealed class MainWindow : Window
         layoutGeneration++;
         layoutAnimating = false; BeginAnimation(LayoutProgressProperty, null); Surface.TransitionLayout = null;
         State.HardwareHistory.ApplySettings(Settings);
+        Updates.Configure();
         SettingsApplied?.Invoke();
         HoverHints.SetPalette(this, ThemePalette.Get(Settings.Theme));
         HoverHints.SetIsDark(this, ThemePalette.Get(Settings.Theme).Dark);
@@ -550,6 +555,11 @@ public sealed class MainWindow : Window
         try { store.Save(Settings); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AppLog.Write("settings.save", ex.GetType().Name); }
     }
+    public void PersistBeforeUpdate()
+    {
+        if (!persistSettings) throw new IOException("调试模式不执行更新。");
+        store.Save(Settings);
+    }
     public void OpenSettings()
     {
         Settings.ClickThrough = false; Settings.PanelLocked = false; ApplySettings(); SaveSettings();
@@ -567,6 +577,7 @@ public sealed class MainWindow : Window
         historyWindow.Closed += (_, _) => historyWindow = null;
         historyWindow.Show();
     }
+    internal void NotifyUpdateAvailable(string tag) => tray.ShowBalloonTip(5000, "Mizu 有新版本", tag + " 已可用，点击查看并选择更新。", System.Windows.Forms.ToolTipIcon.Info);
     public async Task RefreshAsync()
     { await Task.WhenAll(Engine.RefreshDevicesAsync(), Engine.RefreshWeatherAsync()); }
     internal void ShowInteractive()
@@ -578,6 +589,7 @@ public sealed class MainWindow : Window
     public async Task QuitAsync(int exitCode = 0)
     {
         if (disposed) return; disposed = true; quitting = true;
+        Updates.Dispose();
         settingsWindow?.Close(); historyWindow?.Close(); SaveSettings();
         tray.Visible = false; var trayIcon = tray.Icon; tray.Dispose(); trayIcon?.Dispose();
         NativeWindow.UnregisterHotKey(new WindowInteropHelper(this).Handle, 0x4d5a);

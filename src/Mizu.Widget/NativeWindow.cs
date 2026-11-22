@@ -49,7 +49,16 @@ internal static class NativeWindow
     public static void SetAutoStart(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        if (enabled) key.SetValue("Mizu", "\"" + Environment.ProcessPath + "\" --startup");
+        if (enabled) {
+            string app = System.IO.Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+            string? root = System.IO.Path.GetDirectoryName(app);
+            string launcher = root is null ? "" : System.IO.Path.Combine(root, "Mizu.exe");
+            // The launcher can recover even when an interrupted update left
+            // the app directory temporarily absent.
+            string executable = System.IO.Path.GetFileName(app).Equals("app", StringComparison.OrdinalIgnoreCase) &&
+                System.IO.File.Exists(launcher) ? launcher : Environment.ProcessPath!;
+            key.SetValue("Mizu", "\"" + executable + "\" --startup");
+        }
         else key.DeleteValue("Mizu", false);
     }
 }

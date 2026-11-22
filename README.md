@@ -22,10 +22,11 @@
 - 待办：本地保存，直接添加、勾选与编辑。
 - 外观：五种主题，圆角、透明度、字号、字重与平滑缩放可调；悬停显示操作按钮。
 - 提醒：可选 PushPlus 低电量与持续高负载 / 高温通知。
+- 应用内更新：安装版与便携版均可从设置 → 关于检查更新，支持预览通道、下载进度和失败恢复。[更新说明](docs/updates.md)
 
 ## 开始使用
 
-当前源码版本 **0.7.10 预览版**。[查看已发布的安装版或便携版](https://github.com/cqc0101/Mizu/releases)。
+当前源码版本 **0.7.11 预览版**。[查看已发布的安装版或便携版](https://github.com/cqc0101/Mizu/releases)。
 安装版运行对应的 `-setup.exe`；便携版完整解压，双击根目录 `Mizu.exe`。[安装与卸载说明](docs/installation.md)
 常见 Intel / AMD 电脑使用 `win-x64`；32 位 Windows 使用 `win-x86`；ARM 使用 `win-arm64`。
 首次使用在设置中选择城市并调整显示内容。双击组件或按 `Ctrl+,` 打开设置；托盘菜单可退出。
@@ -59,11 +60,13 @@ dotnet restore .\Mizu.slnx --configfile .\NuGet.Config --disable-parallel
 dotnet build .\src\Mizu.Widget\Mizu.Widget.csproj -c Release --no-restore
 dotnet run --project .\tests\Mizu.Tests\Mizu.Tests.csproj -c Release
 dotnet run --project .\tests\Mizu.Widget.Checks\Mizu.Widget.Checks.csproj -c Release
+pwsh .\scripts\test_updater.ps1
 pwsh .\scripts\publish.ps1 -Runtime win-x64
 ```
 
 输出：`artifacts/Mizu-<版本>-win-x64/`。其他可选目标：`win-x86`、`win-arm64`。
 首次还原和跨架构发布需要访问 NuGet。WPF 检查需要交互式 Windows 桌面。
+更新事务检查需要 Inno Setup 的 ISCC 编译器；正式发布脚本会同时编译独立更新助手。
 [ARM64 云端验证](docs/arm64-validation.md) · [架构与扩展](docs/architecture.md) · [参与贡献](CONTRIBUTING.md) · [版本记录](CHANGELOG.md)
 
 ## 数据与许可

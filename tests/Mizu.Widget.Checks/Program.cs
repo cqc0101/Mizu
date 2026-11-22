@@ -163,6 +163,15 @@ Desc<Button>(dialog).Single(b=>System.Windows.Automation.AutomationProperties.Ge
 Check(settingsLive.Vocabulary.Count==0 && !main.Surface.TargetLayout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Deleting the final word removes its reserved space");
 tabs.SelectedIndex=8;dialog.UpdateLayout();
 Check(Desc<TextBlock>(dialog).Any(t=>t.Text=="v0.6.0") && Desc<TextBlock>(dialog).Any(t=>t.Text=="v0.5.3"),"Packaged version history contains current and prior releases");
+var autoUpdates=Desc<CheckBox>(dialog).Single(c=>Equals(c.Content,"自动检查更新"));
+var previewUpdates=Desc<CheckBox>(dialog).Single(c=>Equals(c.Content,"接收预览版更新"));
+autoUpdates.IsChecked=false;previewUpdates.IsChecked=false;
+Check(!settingsLive.AutoCheckUpdates && !settingsLive.ReceivePreviewUpdates,"Update preferences apply from the actual About controls");
+autoUpdates.IsChecked=true;previewUpdates.IsChecked=true;
+Check(settingsLive.AutoCheckUpdates && settingsLive.ReceivePreviewUpdates,"Both update preferences can be reenabled");
+Desc<Button>(dialog).Single(b=>Equals(b.Content,"检查更新")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(Desc<TextBlock>(dialog).Any(t=>t.Text.Contains("不联网检查更新")),"Preview UI does not make real update requests");
+dialog.ShowUpdates();Check(tabs.SelectedIndex==8,"Tray update entry selects the About update panel");
 tabs.SelectedIndex=0;dialog.UpdateLayout();
 var sliders=Desc<Slider>(dialog).Where(s=>s.Maximum!=720).ToArray(); sliders[0].Value=35;dialog.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);Check(Math.Abs(settingsLive.GlassOpacity-.35)<.001,"Opacity control applies immediately");
 sliders[1].Value=64;dialog.Dispatcher.Invoke(()=>{},System.Windows.Threading.DispatcherPriority.ApplicationIdle);Check(settingsLive.CornerRadius==64 && ((RectangleGeometry)grid.Clip).RadiusX==64,"Radius control updates visual and content clipping together");

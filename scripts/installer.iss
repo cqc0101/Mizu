@@ -63,6 +63,12 @@ Filename: "{app}\Mizu.exe"; Description: "Launch Mizu"; Flags: nowait postinstal
 ; Settings and the shared PawnIO driver are intentionally retained on uninstall.
 
 [Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    SaveStringToFile(ExpandConstant('{app}\app\mizu-package.json'), '{"Format":1,"Kind":"installed","Runtime":"{#Runtime}"}', False);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   StartupCommand: String;
@@ -70,6 +76,7 @@ begin
   if CurUninstallStep = usUninstall then
     if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Mizu', StartupCommand) then
       if (CompareText(StartupCommand, '"' + ExpandConstant('{app}\app\Mizu.exe') + '"') = 0) or
-         (CompareText(StartupCommand, '"' + ExpandConstant('{app}\app\Mizu.exe') + '" --startup') = 0) then
+         (CompareText(StartupCommand, '"' + ExpandConstant('{app}\app\Mizu.exe') + '" --startup') = 0) or
+         (CompareText(StartupCommand, '"' + ExpandConstant('{app}\Mizu.exe') + '" --startup') = 0) then
         RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Mizu');
 end;
