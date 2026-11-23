@@ -48,7 +48,20 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             return visible.OrderByDescending(d => d.State == LinkState.Online).ThenByDescending(d => d.State == LinkState.Online && d.Link == LinkKind.Bluetooth).ThenBy(d => deviceOrder.IndexOf(d.Id)).ToArray();
         }
     }
-    private Brush foreground = Brushes.Gray, secondary = Brushes.Gray, quiet = Brushes.Gray, green = Brushes.Gray, line = Brushes.Gray;
+    private readonly GlassMaterial material = new();
+    internal GlassMaterial Material
+    {
+        get
+        {
+            material.Update(Palette, PreviewMaterial ? 212 / 255d : settings.GlassOpacity);
+            return material;
+        }
+    }
+    private Brush foreground => material.Text;
+    private Brush secondary => material.Secondary;
+    private Brush quiet => material.Quiet;
+    private Brush green => material.Accent;
+    private Brush line => material.Line;
     private ThemePalette Palette => ThemePalette.Get(settings.Theme);
     public string NetworkHint
     {
@@ -71,8 +84,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     protected override void OnRender(DrawingContext d)
     {
         base.OnRender(d);
-        foreground = Art.Brush(Palette.Text); secondary = Art.Brush(Palette.Secondary);
-        quiet = Art.Brush(Palette.Quiet); green = Art.Brush(Palette.Accent); line = Art.Brush(Palette.Line);
+        var panel = Material;
         var target = TargetLayout;
         var layout = TransitionLayout ?? target;
         double height = layout.Height + FooterHeight * FooterReveal, radius = settings.CornerRadius;
@@ -82,15 +94,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         bool columnsChanged = drawnVocabularyColumns != target.VocabularyColumns;
         drawnVocabularyColumns = target.VocabularyColumns;
         SyncVocabularyOffset(snap: columnsChanged || vocabulary.Offset < vocabularyScrollTarget);
-        var baseColor = Art.Brush(Palette.Base).Color;
-        baseColor.A = PreviewMaterial ? (byte)212 : (byte)(settings.GlassOpacity * 255);
-        var glass = new LinearGradientBrush(baseColor, Color.FromArgb((byte)Math.Max(16, baseColor.A - 18), baseColor.R, baseColor.G, baseColor.B), 95);
-        d.PushClip(new RectangleGeometry(new(0, 0, width, height), radius, radius));
-        d.DrawRoundedRectangle(glass, null, new(0, 0, width, height), radius, radius);
-        var glow = new RadialGradientBrush(Color.FromArgb(Dark ? (byte)18 : (byte)68, 255, 255, 255), Colors.Transparent)
-        { GradientOrigin = new(.1, .0), Center = new(.1, .0), RadiusX = 1.1, RadiusY = .7 };
-        d.DrawRectangle(glow, null, new(0, 0, width, height));
-        d.DrawRoundedRectangle(null, Art.Pen(Art.Brush(Dark ? "#38FFFFFF" : "#C8FFFFFF"), 1.1), new(.7, .7, width - 1.4, height - 1.4), Math.Max(0, radius - .7), Math.Max(0, radius - .7));
+        var bounds = new Rect(0, 0, width, height);
+        d.PushClip(new RectangleGeometry(bounds, radius, radius));
+        panel.Draw(d, bounds, radius);
         for (int i = 0; i < layout.Sections.Length; i++)
         {
             var section = layout.Sections[i];

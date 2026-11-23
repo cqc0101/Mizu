@@ -29,8 +29,11 @@ if(drawing is GlyphRunDrawing glyph && glyph.GlyphRun.Characters is { } characte
 if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var text in DrawingText(child))yield return text;
 }
 static IEnumerable<GlyphRun> DrawingGlyphs(Drawing? drawing) {
-if(drawing is GlyphRunDrawing glyph)yield return glyph.GlyphRun;
-if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var run in DrawingGlyphs(child))yield return run;
+return GlyphPaint(drawing).Select(glyph => glyph.GlyphRun);
+}
+static IEnumerable<GlyphRunDrawing> GlyphPaint(Drawing? drawing) {
+if(drawing is GlyphRunDrawing glyph)yield return glyph;
+if(drawing is DrawingGroup group)foreach(var child in group.Children)foreach(var run in GlyphPaint(child))yield return run;
 }
 static void Pump(int milliseconds) {
 var frame=new System.Windows.Threading.DispatcherFrame();
@@ -56,6 +59,47 @@ var bitmap=new RenderTargetBitmap(w,h,96*dpi,96*dpi,PixelFormats.Pbgra32);bitmap
 if(radius>0) foreach(var p in new[]{(0,0),(w-1,0),(0,h-1),(w-1,h-1)})Check(pixels[(p.Item2*w+p.Item1)*4+3]==0,$"Corner {theme} R{radius} compact{compact} DPI{dpi}");
 Check(pixels[((h/2)*w+w/2)*4+3]>0,"Material present");
 }
+}
+double Luma(Color color) {
+    double Channel(byte value) { double c = value / 255.0; return c < .04045 ? c / 12.92 : Math.Pow((c + .055) / 1.055, 2.4); }
+    return .2126 * Channel(color.R) + .7152 * Channel(color.G) + .0722 * Channel(color.B);
+}
+double Contrast(Color a, Color b) {
+    double first = Luma(a), second = Luma(b);
+    return (Math.Max(first, second) + .05) / (Math.Min(first, second) + .05);
+}
+foreach (var theme in ThemePalette.All)
+foreach (double opacity in new[] { .15, .35, .95 })
+{
+    var settings = new AppSettings
+    {
+        Theme = theme.Id, GlassOpacity = opacity, CornerRadius = 32, ShowWeather = false, ShowDevices = false,
+        ShowCpu = false, ShowMemory = false, ShowTemperature = false, ShowNetwork = true, ShowNetworkProbeIp = true,
+        NetworkProbeTargets = ["1.1.1.1"]
+    };
+    var surface = new WidgetSurface(new WidgetState(), settings) { Width = 356 };
+    surface.Height = surface.Layout.Height;
+    surface.Measure(new(356, surface.Height)); surface.Arrange(new(0, 0, 356, surface.Height));
+    var bitmap = Capture(surface);
+    byte[] Pixel(int x, int y) {
+        var pixel = new byte[4];
+        bitmap.CopyPixels(new Int32Rect(2 * x, 2 * y, 1, 1), pixel, 4, 0);
+        return pixel;
+    }
+    int probeY = (int)surface.Layout.Sections.Single().Top + 60;
+    var sample = Pixel(178, probeY);
+    var ink = GlyphPaint(VisualTreeHelper.GetDrawing(surface))
+        .Single(glyph => glyph.GlyphRun.Characters is { } chars && string.Concat(chars) == "1.1.1.1");
+    var inkColor = ((SolidColorBrush)ink.ForegroundBrush).Color;
+    foreach (bool whiteWallpaper in new[] { false, true })
+    {
+        int behind = whiteWallpaper ? 255 - sample[3] : 0;
+        var composite = Color.FromRgb((byte)(sample[2] + behind), (byte)(sample[1] + behind), (byte)(sample[0] + behind));
+        double ratio = Contrast(composite, inkColor);
+        Check(ratio >= 4.5, $"Small text on {theme.Id} at {opacity:P0} over {(whiteWallpaper ? "white" : "black")} measures {ratio:F2}:1");
+    }
+    if (opacity <= .35)
+        Check(sample[3] > Pixel(3, probeY)[3] + 48 && Pixel(0, 0)[3] == 0, $"Low-opacity {theme.Id} retains translucent edges and clear corners");
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
 var gpuSettings = new AppSettings { ShowWeather = false, ShowDevices = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false };

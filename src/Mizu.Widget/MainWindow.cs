@@ -285,10 +285,10 @@ public sealed class MainWindow : Window
         }
         return false;
     }
-    private static Button IconButton(string icon, string tip, Action clicked)
+    private Button IconButton(string icon, string tip, Action clicked)
     {
         var button = new Button { Width = 29, Height = 25, Background = Brushes.Transparent, BorderThickness = new(0), Cursor = Cursors.Hand,
-            Content = new IconView(icon, Art.Brush("#8A9386")) { Width = 13, Height = 13 }, Padding = new(6), FocusVisualStyle = null };
+            Content = new IconView(icon, Surface.Material.Secondary) { Width = 13, Height = 13 }, Padding = new(6), FocusVisualStyle = null };
         System.Windows.Automation.AutomationProperties.SetName(button, tip);
         HoverHints.Set(button, tip);
         button.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse("""
@@ -431,7 +431,7 @@ public sealed class MainWindow : Window
         var tip = locked ? "解锁面板" : "锁定面板";
         System.Windows.Automation.AutomationProperties.SetName(lockButton, tip);
         HoverHints.Set(lockButton, tip);
-        lockButton.Content = new IconView(locked ? "lock" : "unlock", Art.Brush(ThemePalette.Get(Settings.Theme).Secondary)) { Width = 13, Height = 13 };
+        lockButton.Content = new IconView(locked ? "lock" : "unlock", Surface.Material.Secondary) { Width = 13, Height = 13 };
         Surface.IsHitTestVisible = todoHost.IsHitTestVisible = mediaHost.IsHitTestVisible = !locked;
         if (locked) HoverHints.Close(Surface);
     }
@@ -513,7 +513,7 @@ public sealed class MainWindow : Window
         {
             var button = IconButton(icon, label, async () => await Engine.MediaCommandAsync(command));
             button.Width = 44; button.Height = 30; button.IsEnabled = enabled; button.Opacity = enabled ? 1 : .3;
-            button.Content = new IconView(icon, Art.Brush(ThemePalette.Get(Settings.Theme).Text), 1.65) { Width = 20, Height = 20 };
+            button.Content = new IconView(icon, Surface.Material.Text, 1.65) { Width = 20, Height = 20 };
             row.Children.Add(button);
         }
         mediaHost.Children.Add(row);
@@ -532,12 +532,12 @@ public sealed class MainWindow : Window
         todoHost.Margin = new(30, area?.Top ?? 0, 0, 0); todoHost.Width = 296; todoHost.Height = area?.Height ?? 0;
         todoEditorHost.VerticalAlignment = VerticalAlignment.Top; todoEditorHost.HorizontalAlignment = HorizontalAlignment.Left;
         todoEditorHost.Width = 296; todoEditorHost.Height = 30;
-        var palette = ThemePalette.Get(Settings.Theme); var dark = palette.Dark;
+        var material = Surface.Material;
         var rows = new StackPanel();
         foreach (var item in Settings.Todos.Where(t => Settings.ShowTodo && (!Settings.HideCompletedTodos || !t.Completed)))
         {
             var label = new TextBlock { Text = item.Text, TextTrimming = TextTrimming.CharacterEllipsis, Width = 258, FontSize = 13 * Settings.TextScale, FontWeight = FontWeight.FromOpenTypeWeight(Settings.TextWeight),
-                Foreground = Art.Brush(item.Completed ? palette.Quiet : palette.Text), TextDecorations = item.Completed ? TextDecorations.Strikethrough : null };
+                Foreground = item.Completed ? material.Quiet : material.Text, TextDecorations = item.Completed ? TextDecorations.Strikethrough : null };
             var check = new CheckBox { Content = label, IsChecked = item.Completed, Height = 32, VerticalContentAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand };
             check.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse("""
                 <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="CheckBox">
@@ -565,7 +565,8 @@ public sealed class MainWindow : Window
     private void BuildAddEditor()
     {
         HoverHints.CloseTree(todoEditorHost); todoEditorHost.Children.Clear();
-        var palette = ThemePalette.Get(Settings.Theme); var dark = palette.Dark;
+        bool dark = ThemePalette.Get(Settings.Theme).Dark;
+        var material = Surface.Material;
         if (footerMode == "todo" && !Settings.ShowTodo || footerMode == "word" && !Settings.ShowVocabulary) footerMode = "";
         if (footerMode == "" && Settings.ShowTodo && !Settings.ShowVocabulary) footerMode = "todo";
         AnimateEditor(footerMode == "word");
@@ -576,7 +577,7 @@ public sealed class MainWindow : Window
             var actions = new System.Windows.Controls.Primitives.UniformGrid { Rows = 1 };
             void Choice(string label, string mode) {
                 var button = IconButton("plus", label, () => { footerMode = mode; BuildAddEditor(); });
-                button.Width = double.NaN; button.Content = new TextBlock { Text = label, FontSize = 12 * Settings.TextScale, Foreground = Art.Brush(palette.Secondary) }; actions.Children.Add(button);
+                button.Width = double.NaN; button.Content = new TextBlock { Text = label, FontSize = 12 * Settings.TextScale, Foreground = material.Secondary }; actions.Children.Add(button);
             }
             if (Settings.ShowTodo) Choice("添加事件", "todo");
             if (Settings.ShowVocabulary) Choice("添加单词", "word");
@@ -589,9 +590,9 @@ public sealed class MainWindow : Window
             editor.ColumnDefinitions.Add(new()); editor.ColumnDefinitions.Add(new() { Width = new(30) });
             editor.RowDefinitions.Add(new() { Height = new(30) }); editor.RowDefinitions.Add(new() { Height = new(8) }); editor.RowDefinitions.Add(new() { Height = new(30) });
             TextBox Field(string placeholder, int limit, int row) {
-                var box = new TextBox { MaxLength = limit, Padding = new(4), Background = Brushes.Transparent, BorderThickness = new(0), Foreground = Art.Brush(palette.Text), CaretBrush = Art.Brush(palette.Accent), FontSize = 12 * Settings.TextScale };
+                var box = new TextBox { MaxLength = limit, Padding = new(4), Background = Brushes.Transparent, BorderThickness = new(0), Foreground = material.Text, CaretBrush = material.Accent, FontSize = 12 * Settings.TextScale };
                 System.Windows.Automation.AutomationProperties.SetName(box, placeholder); HoverHints.Set(box, placeholder);
-                var hint = new TextBlock { Text = placeholder, Margin = new(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = Art.Brush(palette.Secondary), FontSize = 11 * Settings.TextScale, IsHitTestVisible = false };
+                var hint = new TextBlock { Text = placeholder, Margin = new(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = material.Secondary, FontSize = 11 * Settings.TextScale, IsHitTestVisible = false };
                 var cell = new Grid(); cell.Children.Add(box); cell.Children.Add(hint); Grid.SetRow(cell, row); editor.Children.Add(cell);
                 box.TextChanged += (_, _) => hint.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
                 box.GotKeyboardFocus += (_, _) => { todoHideDelay.Stop(); AnimateTodoFooter(true); };
@@ -610,10 +611,10 @@ public sealed class MainWindow : Window
             Dispatcher.BeginInvoke(new Action(() => { if (word.IsVisible && !Settings.PanelLocked) word.Focus(); }));
             return;
         }
-        var input = new TextBox { Background = Brushes.Transparent, BorderThickness = new(0), Foreground = Art.Brush(palette.Text), CaretBrush = Art.Brush(palette.Accent), FontSize = 12 * Settings.TextScale, FontWeight = FontWeight.FromOpenTypeWeight(Settings.TextWeight), Padding = new(5), MaxLength = 160, ToolTip = "输入待办，按 Enter 添加" };
+        var input = new TextBox { Background = Brushes.Transparent, BorderThickness = new(0), Foreground = material.Text, CaretBrush = material.Accent, FontSize = 12 * Settings.TextScale, FontWeight = FontWeight.FromOpenTypeWeight(Settings.TextWeight), Padding = new(5), MaxLength = 160, ToolTip = "输入待办，按 Enter 添加" };
         HoverHints.Set(input, "输入待办，按 Enter 添加");
         var inputRow = new Grid(); inputRow.ColumnDefinitions.Add(new()); inputRow.ColumnDefinitions.Add(new() { Width = new(30) }); inputRow.Children.Add(input);
-        var placeholder = new TextBlock { Text = "添加事件", FontSize = 12 * Settings.TextScale, Foreground = Art.Brush(palette.Secondary), Margin = new(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+        var placeholder = new TextBlock { Text = "添加事件", FontSize = 12 * Settings.TextScale, Foreground = material.Secondary, Margin = new(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
         inputRow.Children.Add(placeholder);
         input.TextChanged += (_, _) => placeholder.Visibility = input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         var add = IconButton("plus", "添加待办", () => AddTodo(input)); Grid.SetColumn(add, 1); inputRow.Children.Add(add);

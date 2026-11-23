@@ -26,7 +26,7 @@
 
 ## 开始使用
 
-当前源码版本 **0.7.16 预览版**。[查看已发布的安装版或便携版](https://github.com/cqc0101/Mizu/releases)。
+当前源码版本 **0.7.17 预览版**。[查看已发布的安装版或便携版](https://github.com/cqc0101/Mizu/releases)。
 安装版运行对应的 `-setup.exe`；便携版完整解压，双击根目录 `Mizu.exe`。[安装与卸载说明](docs/installation.md)
 常见 Intel / AMD 电脑使用 `win-x64`；32 位 Windows 使用 `win-x86`；ARM 使用 `win-arm64`。
 首次使用在设置中选择城市并调整显示内容。双击组件或按 `Ctrl+,` 打开设置；托盘菜单可退出。
