@@ -6,35 +6,36 @@ public sealed class VocabularyRotation
 {
     private VocabularyEntry[] entries = [];
     private VocabularyEntry[] order = [];
-    private VocabularyEntry[] visible = [];
-    private int page, size = 1, minutes;
+    private int size = 1, minutes;
     private bool random, enabled;
     private DateTimeOffset deadline;
-    public IReadOnlyList<VocabularyEntry> Visible => visible;
-    private int LastPage => entries.Length == 0 ? 0 : (entries.Length - 1) / size;
+    public IReadOnlyList<VocabularyEntry> Order => order;
+    public int VisibleRowCount => Math.Min(size, order.Length);
+    public int MaximumOffset => order.Length - VisibleRowCount;
+    public double Offset { get; private set; }
 
     public void Update(AppSettings settings, DateTimeOffset now)
     {
         ApplySettings(settings, now);
         if (!enabled || now < deadline) return;
 
-        if (page < LastPage) page++;
+        if (Offset < MaximumOffset) Offset = Math.Min(Offset + VisibleRowCount, MaximumOffset);
         else RestartCycle();
-        Select();
         deadline = now.AddMinutes(minutes);
     }
 
-    public bool TurnPage(AppSettings settings, int direction, DateTimeOffset now)
+    public void Scroll(AppSettings settings, int wheelDelta, double displayedOffset, DateTimeOffset now)
     {
+        var previousOrder = order;
         ApplySettings(settings, now);
-        if (!enabled || direction == 0) return false;
+        if (!enabled || wheelDelta == 0) return;
 
         deadline = now.AddMinutes(minutes);
-        int next = Math.Clamp(page + Math.Sign(direction), 0, LastPage);
-        if (next == page) return false;
-        page = next;
-        Select();
-        return true;
+        double movement = -wheelDelta / 120d;
+        double displayed = ReferenceEquals(previousOrder, order) ? Math.Clamp(displayedOffset, 0, MaximumOffset) : 0;
+        // Discard unfinished travel in the opposite direction as soon as the user reverses.
+        double start = (Offset - displayed) * movement < 0 ? displayed : Offset;
+        Offset = Math.Clamp(start + movement, 0, MaximumOffset);
     }
 
     private void ApplySettings(AppSettings settings, DateTimeOffset now)
@@ -47,7 +48,6 @@ public sealed class VocabularyRotation
             size = pageSize;
             random = settings.VocabularyRandom;
             RestartCycle();
-            Select();
         }
         if (changed || minutes != settings.VocabularyMinutes || enabled != settings.ShowVocabulary)
             deadline = now.AddMinutes(settings.VocabularyMinutes);
@@ -57,7 +57,9 @@ public sealed class VocabularyRotation
 
     private void RestartCycle()
     {
-        page = 0;
+        var previousOrder = order;
+        int first = Math.Min((int)Offset, Math.Max(0, previousOrder.Length - size));
+        Offset = 0;
         if (!random)
         {
             order = entries;
@@ -65,16 +67,9 @@ public sealed class VocabularyRotation
         }
         order = entries.ToArray();
         Random.Shared.Shuffle(order);
-        int count = Math.Min(size, order.Length);
-        if (order.Length > 1 && order.AsSpan(0, count).SequenceEqual(visible))
+        int count = VisibleRowCount;
+        if (order.Length > 1 && previousOrder.Length - first >= count &&
+            order.AsSpan(0, count).SequenceEqual(previousOrder.AsSpan(first, count)))
             (order[0], order[^1]) = (order[^1], order[0]);
-    }
-
-    private void Select()
-    {
-        int count = Math.Min(size, order.Length);
-        // Align the last window to the last word so the panel keeps its height.
-        int start = Math.Min(page * size, order.Length - count);
-        visible = order.AsSpan(start, count).ToArray();
     }
 }

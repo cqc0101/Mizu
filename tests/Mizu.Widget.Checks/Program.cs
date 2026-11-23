@@ -320,6 +320,24 @@ main.Settings.ShowClock=true;main.Settings.ShowTodo=true;main.Settings.ShowVocab
 main.Settings.Vocabulary=[new(){Word="serene",Meaning="宁静的"},new(){Word="gentle",Meaning="温柔的"},new(){Word="bloom",Meaning="绽放"}];
 main.Settings.VocabularyVisibleRows=2;main.ApplySettings();Pump(330);main.UpdateLayout();
 Check(main.Surface.TargetLayout.Sections[0].Kind==WidgetSection.Clock && main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==132,"Clock and two word groups occupy separate sections");
+var scrollVocabulary = typeof(WidgetSurface).GetMethod("ScrollVocabulary", BindingFlags.NonPublic | BindingFlags.Instance)!;
+double WordOffset() => (double)main.Surface.GetValue(WidgetSurface.VocabularyOffsetProperty);
+double WordBaseline(string word) => DrawingGlyphs(VisualTreeHelper.GetDrawing(main.Surface))
+    .First(run => run.Characters is { } characters && string.Concat(characters) == word).BaselineOrigin.Y;
+double initialBaseline = WordBaseline("gentle");
+scrollVocabulary.Invoke(main.Surface, [-120]);
+Pump(45);
+double intermediate = WordOffset();
+Check(intermediate is > 0 and < 1 && WordBaseline("gentle") < initialBaseline, "Wheel input moves rendered words through intermediate vertical positions");
+scrollVocabulary.Invoke(main.Surface, [120]);
+Pump(230);
+Check(WordOffset() == 0 && Math.Abs(WordBaseline("gentle") - initialBaseline) < .01, "Reversing an in-progress scroll returns smoothly to the first row");
+scrollVocabulary.Invoke(main.Surface, [-1200]);
+Pump(330);
+double settledOffset = WordOffset();
+double viewportHeight = main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height;
+Check(Math.Abs(settledOffset - 1) < .001 && viewportHeight == 132,
+    $"Fast scrolling stops on the final row and keeps the vocabulary viewport height: {settledOffset}, {viewportHeight}");
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]);Pump(320);
 Button AddChoice(string name)=>Desc<Button>(main).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==name);
 Check(AddChoice("添加事件").IsVisible && AddChoice("添加单词").IsVisible,"Both enabled add actions appear side by side");

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Mizu.Core;
 using Mizu.Core.Services;
 
@@ -23,8 +24,12 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     private readonly PeripheralPresence presence = new();
     private readonly DevicePager pager = new();
     private readonly VocabularyRotation vocabulary = new();
-    private int wordWheel;
-    private long lastWordWheel = long.MinValue / 2, lastWordTurn = long.MinValue / 2;
+    public static readonly DependencyProperty VocabularyOffsetProperty = DependencyProperty.Register("VocabularyOffset", typeof(double),
+        typeof(WidgetSurface), new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));
+    private double VocabularyOffset => (double)GetValue(VocabularyOffsetProperty);
+    private double vocabularyScrollTarget;
+    private int vocabularyScrollGeneration;
+    private IReadOnlyList<VocabularyEntry>? drawnVocabularyOrder;
     private readonly List<string> deviceOrder = [];
     public IReadOnlyList<Peripheral> VisibleDevices
     {
@@ -66,6 +71,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         quiet = Art.Brush(Palette.Quiet); green = Art.Brush(Palette.Accent); line = Art.Brush(Palette.Line);
         var layout = Layout; double height = layout.Height + FooterHeight * FooterReveal, radius = settings.CornerRadius;
         vocabulary.Update(settings, DateTimeOffset.Now);
+        SyncVocabularyOffset(snap: vocabulary.Offset < vocabularyScrollTarget);
         var baseColor = Art.Brush(Palette.Base).Color;
         baseColor.A = PreviewMaterial ? (byte)212 : (byte)(settings.GlassOpacity * 255);
         var glass = new LinearGradientBrush(baseColor, Color.FromArgb((byte)Math.Max(16, baseColor.A - 18), baseColor.R, baseColor.G, baseColor.B), 95);
@@ -113,14 +119,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                         weight: settings.TextWeight, alignment: TextAlignment.Right);
                     break;
                 case WidgetSection.Vocabulary:
-                    for (int row = 0; row < vocabulary.Visible.Count; row++)
-                    {
-                        var entry = vocabulary.Visible[row]; var y = section.Top + row * WidgetLayout.VocabularyRowHeight(settings);
-                        Text(d, entry.Word, 31, y + 3, 22, foreground, Dpi, medium: true, width: 294);
-                        if (!settings.VocabularyHideMeaning)
-                            Art.Text(d, entry.Meaning, 31, y + WidgetLayout.VocabularyMeaningTop, settings.VocabularyMeaningFontSize * settings.TextScale,
-                                secondary, Dpi, width: 294, weight: settings.TextWeight);
-                    }
+                    DrawVocabulary(d, section);
                     break;
                 case WidgetSection.Todo:
                     break;
@@ -131,6 +130,63 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             d.PushOpacity(FooterReveal); Art.Line(d, Art.Pen(line, .7), 31, layout.Height - 12, 325, layout.Height - 12); d.Pop();
         }
         d.Pop();
+    }
+    private void DrawVocabulary(DrawingContext drawing, SectionLayout section)
+    {
+        double rowHeight = WidgetLayout.VocabularyRowHeight(settings);
+        double offset = VocabularyOffset;
+        int first = (int)Math.Floor(offset);
+        int end = Math.Min(vocabulary.Order.Count, (int)Math.Ceiling(offset + section.Height / rowHeight));
+        drawing.PushClip(new RectangleGeometry(new Rect(0, section.Top, SurfaceWidth, section.Height)));
+        for (int row = first; row < end; row++)
+        {
+            var entry = vocabulary.Order[row];
+            double y = section.Top + (row - offset) * rowHeight;
+            Text(drawing, entry.Word, 31, y + 3, 22, foreground, Dpi, medium: true, width: 294);
+            if (!settings.VocabularyHideMeaning)
+                Art.Text(drawing, entry.Meaning, 31, y + WidgetLayout.VocabularyMeaningTop, settings.VocabularyMeaningFontSize * settings.TextScale,
+                    secondary, Dpi, width: 294, weight: settings.TextWeight);
+        }
+        drawing.Pop();
+    }
+
+    private void SyncVocabularyOffset(bool snap = false)
+    {
+        double target = vocabulary.Offset;
+        if (!ReferenceEquals(drawnVocabularyOrder, vocabulary.Order))
+        {
+            drawnVocabularyOrder = vocabulary.Order;
+            snap = true;
+        }
+        if (!snap && target == vocabularyScrollTarget) return;
+
+        double current = VocabularyOffset;
+        vocabularyScrollTarget = target;
+        int generation = ++vocabularyScrollGeneration;
+        void Finish()
+        {
+            if (generation != vocabularyScrollGeneration) return;
+            SetValue(VocabularyOffsetProperty, target);
+            BeginAnimation(VocabularyOffsetProperty, null);
+        }
+        if (snap || Math.Abs(current - target) < .001)
+        {
+            Finish();
+            return;
+        }
+        var animation = new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(170))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        animation.Completed += (_, _) => Finish();
+        BeginAnimation(VocabularyOffsetProperty, animation, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void ScrollVocabulary(int delta)
+    {
+        vocabulary.Scroll(settings, delta, VocabularyOffset, DateTimeOffset.Now);
+        if (vocabulary.Offset != vocabularyScrollTarget) HoverHints.Close(this);
+        SyncVocabularyOffset();
     }
     private void DrawGpuMemory(DrawingContext d, double top)
     {
@@ -335,24 +391,9 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         if (settings.PanelLocked) { e.Handled = true; return; }
         var words = Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Vocabulary);
         var mouse = e.GetPosition(this);
-        if (words is not null && mouse.Y >= words.Top && mouse.Y <= words.Top + words.Height)
+        if (words is not null && mouse.Y >= words.Top && mouse.Y < words.Top + words.Height)
         {
-            var tick = Environment.TickCount64;
-            if (tick - lastWordWheel > 250 || Math.Sign(wordWheel) != Math.Sign(e.Delta)) wordWheel = 0;
-            lastWordWheel = tick;
-            if (tick - lastWordTurn >= 180) {
-                wordWheel += e.Delta;
-                if (Math.Abs(wordWheel) >= 120)
-                {
-                    if (vocabulary.TurnPage(settings, wordWheel < 0 ? 1 : -1, DateTimeOffset.Now))
-                    {
-                        lastWordTurn = tick;
-                        HoverHints.Close(this);
-                        InvalidateVisual();
-                    }
-                    wordWheel = 0;
-                }
-            }
+            ScrollVocabulary(e.Delta);
             e.Handled = true; return;
         }
         var point = e.GetPosition(this); var area = Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Devices);
@@ -404,10 +445,10 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         Cursor = !settings.PanelLocked && (area?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory) ? Cursors.Hand : Cursors.Arrow;
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
         if (area?.Kind == WidgetSection.Vocabulary) {
-            var row = (int)((p.Y - area.Top) / WidgetLayout.VocabularyRowHeight(settings));
-            if (row >= 0 && row < vocabulary.Visible.Count) {
-                var word = vocabulary.Visible[row];
-                tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮切换单词";
+            var row = (int)Math.Floor(VocabularyOffset + (p.Y - area.Top) / WidgetLayout.VocabularyRowHeight(settings));
+            if (p.Y < area.Top + area.Height && Math.Abs(VocabularyOffset - vocabularyScrollTarget) < .01 && row >= 0 && row < vocabulary.Order.Count) {
+                var word = vocabulary.Order[row];
+                tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮滚动单词";
             }
         }
         if (area?.Kind == WidgetSection.Media) tip = $"{state.Media.Title}\n{state.Media.Artist}\n{state.Media.Status}";

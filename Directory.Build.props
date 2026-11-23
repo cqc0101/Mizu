@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
-    <Version>0.7.14</Version>
+    <Version>0.7.15</Version>
     <Company>Mizu</Company>
   </PropertyGroup>
 </Project>
