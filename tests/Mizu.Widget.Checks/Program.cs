@@ -99,7 +99,14 @@ foreach (double opacity in new[] { .15, .35, .95 })
         Check(ratio >= 4.5, $"Small text on {theme.Id} at {opacity:P0} over {(whiteWallpaper ? "white" : "black")} measures {ratio:F2}:1");
     }
     if (opacity <= .35)
+    {
         Check(sample[3] > Pixel(3, probeY)[3] + 48 && Pixel(0, 0)[3] == 0, $"Low-opacity {theme.Id} retains translucent edges and clear corners");
+        int outerSlope = Pixel(7, probeY)[3] - Pixel(3, probeY)[3];
+        int middleSlope = Pixel(16, probeY)[3] - Pixel(12, probeY)[3];
+        int innerSlope = Pixel(27, probeY)[3] - Pixel(23, probeY)[3];
+        Check(middleSlope > Math.Max(Math.Abs(outerSlope), Math.Abs(innerSlope)) + 2,
+            $"The low-opacity {theme.Id} feather eases in and out ({outerSlope}, {middleSlope}, {innerSlope})");
+    }
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
 var gpuSettings = new AppSettings { ShowWeather = false, ShowDevices = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false };

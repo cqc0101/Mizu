@@ -25,11 +25,6 @@ internal sealed class GlassMaterial
         var tint = Art.Brush(palette.Base).Color;
         byte topAlpha = (byte)(opacity * 255);
         byte bottomAlpha = (byte)Math.Max(16, topAlpha - 18);
-        byte glowAlpha = palette.Dark ? (byte)18 : (byte)68;
-        glass = new LinearGradientBrush(WithAlpha(tint, topAlpha), WithAlpha(tint, bottomAlpha), 95);
-        glow = new RadialGradientBrush(WithAlpha(Colors.White, glowAlpha), Colors.Transparent)
-        { GradientOrigin = new(.1, .0), Center = new(.1, .0), RadiusX = 1.1, RadiusY = .7 };
-        rim = Art.Pen(Art.Brush(palette.Dark ? "#38FFFFFF" : "#C8FFFFFF"), 1.1);
 
         // Only the interior receives the extra tint. It falls away across the
         // outer margins so the opacity slider still exposes the background there.
@@ -38,6 +33,17 @@ internal sealed class GlassMaterial
         double addedOpacity = Math.Max(0, (contentFloor - glassFloor) / (1 - glassFloor));
         byte frostAlpha = (byte)Math.Round(addedOpacity * 255);
         frost = frostAlpha == 0 ? null : MakeFrost(tint, frostAlpha);
+        double edgeSoftness = Math.Min(frostAlpha / 160d, 1);
+        byte glowAlpha = BlendAlpha(palette.Dark ? 18 : 68, palette.Dark ? 12 : 43, edgeSoftness);
+        glass = new LinearGradientBrush(WithAlpha(tint, topAlpha), WithAlpha(tint, bottomAlpha), 95);
+        glow = new RadialGradientBrush(WithAlpha(Colors.White, glowAlpha), WithAlpha(Colors.White, 0))
+        { GradientOrigin = new(.1, .0), Center = new(.1, .0), RadiusX = 1.1, RadiusY = .7 };
+        int outline = palette.Dark ? 56 : 200;
+        var rimBrush = new LinearGradientBrush(
+            WithAlpha(Colors.White, BlendAlpha(outline, palette.Dark ? 41 : 97, edgeSoftness)),
+            WithAlpha(Colors.White, BlendAlpha(outline, palette.Dark ? 15 : 28, edgeSoftness)),
+            90);
+        rim = Art.Pen(rimBrush, 1.1 - .25 * edgeSoftness);
 
         var worstBackdrop = Mix(palette.Dark ? Colors.White : Colors.Black, tint, glassFloor);
         if (palette.Dark) worstBackdrop = Mix(worstBackdrop, Colors.White, glowAlpha / 255d);
@@ -52,12 +58,12 @@ internal sealed class GlassMaterial
 
     public void Draw(DrawingContext drawing, Rect bounds, double radius)
     {
-        drawing.DrawRoundedRectangle(glass, null, bounds, radius, radius);
+        drawing.DrawRectangle(glass, null, bounds);
         drawing.DrawRectangle(glow, null, bounds);
         if (frost is { } brushes)
         {
             double w = bounds.Width, h = bounds.Height;
-            double x = Math.Min(28, w / 4), y = Math.Min(19, h / 4);
+            double x = Math.Min(28, w / 4), y = Math.Min(26, h / 4);
             double right = w - x, bottom = h - y, centerWidth = right - x, centerHeight = bottom - y;
             drawing.PushGuidelineSet(new GuidelineSet([x, right], [y, bottom]));
             drawing.DrawRectangle(brushes[0], null, new(x, y, centerWidth, centerHeight));
@@ -77,14 +83,24 @@ internal sealed class GlassMaterial
 
     private static Brush[] MakeFrost(Color tint, byte alpha)
     {
-        var solid = WithAlpha(tint, alpha);
-        var clear = WithAlpha(tint, 0);
-        Brush Edge(Point inner, Point outer) => new LinearGradientBrush(solid, clear, inner, outer);
-        Brush Corner(Point inner) => new RadialGradientBrush(solid, clear)
+        const int steps = 12;
+        var ramp = new GradientStopCollection(steps + 1);
+        int edgeAlpha = (int)Math.Round(alpha * .30);
+        // Share the same eased profile at straight edges and rounded corners.
+        // The shallow ends eliminate the visible step into the flat center.
+        for (int i = 0; i <= steps; i++)
+        {
+            double offset = (double)i / steps;
+            double eased = offset * offset * (3 - 2 * offset);
+            ramp.Add(new GradientStop(WithAlpha(tint, BlendAlpha(alpha, edgeAlpha, eased)), offset));
+        }
+        ramp.Freeze();
+        Brush Edge(Point inner, Point outer) => new LinearGradientBrush(ramp, inner, outer);
+        Brush Corner(Point inner) => new RadialGradientBrush(ramp)
         { Center = inner, GradientOrigin = inner, RadiusX = 1, RadiusY = 1 };
         Brush[] brushes =
         [
-            new SolidColorBrush(solid),
+            new SolidColorBrush(WithAlpha(tint, alpha)),
             Edge(new(1, .5), new(0, .5)), Edge(new(.5, 1), new(.5, 0)),
             Edge(new(0, .5), new(1, .5)), Edge(new(.5, 0), new(.5, 1)),
             Corner(new(1, 1)), Corner(new(0, 1)), Corner(new(0, 0)), Corner(new(1, 0))
@@ -125,4 +141,5 @@ internal sealed class GlassMaterial
     }
 
     private static Color WithAlpha(Color color, byte alpha) => Color.FromArgb(alpha, color.R, color.G, color.B);
+    private static byte BlendAlpha(int from, int to, double progress) => (byte)Math.Round(from + (to - from) * progress);
 }
