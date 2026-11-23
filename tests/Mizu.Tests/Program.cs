@@ -143,9 +143,32 @@ rotation.Update(rotationSettings,now.AddSeconds(59));Check(rotation.Visible[0].W
 rotation.Update(rotationSettings,now.AddSeconds(60));Check(rotation.Visible[0].Word=="three","Words rotate at configured deadline");
 rotation.Update(rotationSettings,now.AddSeconds(120));Check(rotation.Visible[0].Word=="one","Sequential rotation wraps after the final group");
 rotationSettings.ShowVocabulary=false;rotation.Update(rotationSettings,now.AddSeconds(180));Check(rotation.Visible[0].Word=="one","Hidden vocabulary pauses automatic rotation");
-rotationSettings.ShowVocabulary=true;rotationSettings.VocabularyRandom=true;rotation.Update(rotationSettings,now.AddSeconds(180));
-bool uniqueGroups=true; for(int i=0;i<100;i++){rotation.Advance(1,now.AddSeconds(180+i));uniqueGroups &= rotation.Visible.Count==2 && rotation.Visible.Distinct().Count()==2;}
-Check(uniqueGroups,"Random groups contain the requested number of distinct words");
+var pagingSettings = new AppSettings { ShowVocabulary = true, VocabularyVisibleRows = 3, VocabularyIntervalMinutes = 1,
+    Vocabulary = Enumerable.Range(1, 8).Select(index => new VocabularyEntry { Word = index.ToString() }).ToList() };
+var paging = new VocabularyRotation();
+paging.Update(pagingSettings, now);
+string Page() => string.Join(",", paging.Visible.Select(entry => entry.Word));
+Check(!paging.TurnPage(pagingSettings, -1, now) && Page() == "1,2,3", "Scrolling above the first vocabulary page keeps the first word at the top");
+Check(paging.TurnPage(pagingSettings, 1, now) && Page() == "4,5,6", "Scrolling down moves one full group");
+Check(paging.TurnPage(pagingSettings, 1, now) && Page() == "6,7,8" &&
+      !paging.TurnPage(pagingSettings, 1, now) && Page() == "6,7,8", "Last page aligns to the last word and repeated down-scrolls stop there");
+Check(paging.TurnPage(pagingSettings, -1, now) && Page() == "4,5,6" &&
+      paging.TurnPage(pagingSettings, -1, now) && Page() == "1,2,3", "Reversing the scroll visits the same pages in reverse order");
+Check(!paging.TurnPage(pagingSettings, -1, now.AddMinutes(1)) && Page() == "1,2,3", "Top boundary takes precedence over a coincident automatic deadline");
+paging.Update(pagingSettings, now.AddSeconds(119));
+Check(Page() == "1,2,3", "Manual interaction resets the automatic deadline even at the first page");
+paging.Update(pagingSettings, now.AddMinutes(2));
+Check(Page() == "4,5,6", "Automatic rotation resumes after the new deadline");
+pagingSettings.VocabularyRandom = true;
+paging.Update(pagingSettings, now.AddMinutes(3));
+string randomFirst = Page();
+Check(!paging.TurnPage(pagingSettings, -1, now.AddMinutes(3)) && Page() == randomFirst, "Random mode has a fixed first page during manual scrolling");
+Check(paging.TurnPage(pagingSettings, 1, now.AddMinutes(3)) && paging.Visible.Distinct().Count() == 3 && Page() != randomFirst &&
+      paging.TurnPage(pagingSettings, -1, now.AddMinutes(3)) && Page() == randomFirst, "Random pages have unique words and can be revisited with reverse scrolling");
+pagingSettings.VocabularyVisibleRows = 12;
+paging.Update(pagingSettings, now.AddMinutes(4));
+Check(paging.Visible.Count == 8 && !paging.TurnPage(pagingSettings, 1, now.AddMinutes(4)), "A list that fits in one page stays put");
+rotationSettings.ShowVocabulary=true;
 rotationSettings.VocabularyHideMeaning=true;var wordArea=WidgetLayout.Calculate(rotationSettings).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
 Check(wordArea.Height==84,"Hidden meanings release unused row height");
 rotationSettings.ShowClock=true;Check(WidgetLayout.Calculate(rotationSettings).Sections[0].Kind==WidgetSection.Clock,"Clock appears before weather");

@@ -5,35 +5,76 @@ namespace Mizu.Core;
 public sealed class VocabularyRotation
 {
     private VocabularyEntry[] entries = [];
+    private VocabularyEntry[] order = [];
     private VocabularyEntry[] visible = [];
-    private int start, size, seconds;
+    private int page, size = 1, minutes;
     private bool random, enabled;
     private DateTimeOffset deadline;
     public IReadOnlyList<VocabularyEntry> Visible => visible;
+    private int LastPage => entries.Length == 0 ? 0 : (entries.Length - 1) / size;
 
     public void Update(AppSettings settings, DateTimeOffset now)
     {
-        bool changed = !entries.SequenceEqual(settings.Vocabulary) || size != settings.VocabularyVisibleRows || random != settings.VocabularyRandom;
-        entries = settings.Vocabulary.ToArray(); size = settings.VocabularyVisibleRows; random = settings.VocabularyRandom;
-        if (changed) { start = 0; Select(); }
-        if (changed || seconds != settings.VocabularyMinutes * 60 || enabled != settings.ShowVocabulary)
-            deadline = now.AddMinutes(settings.VocabularyMinutes);
-        seconds = settings.VocabularyMinutes * 60; enabled = settings.ShowVocabulary;
-        if (enabled && now >= deadline) Advance(1, now);
+        ApplySettings(settings, now);
+        if (!enabled || now < deadline) return;
+
+        if (page < LastPage) page++;
+        else RestartCycle();
+        Select();
+        deadline = now.AddMinutes(minutes);
     }
-    public void Advance(int direction, DateTimeOffset now)
+
+    public bool TurnPage(AppSettings settings, int direction, DateTimeOffset now)
     {
-        if (entries.Length > 0) start = (start + direction * Math.Min(size, entries.Length) % entries.Length + entries.Length) % entries.Length;
-        Select(); deadline = now.AddSeconds(Math.Max(5, seconds));
+        ApplySettings(settings, now);
+        if (!enabled || direction == 0) return false;
+
+        deadline = now.AddMinutes(minutes);
+        int next = Math.Clamp(page + Math.Sign(direction), 0, LastPage);
+        if (next == page) return false;
+        page = next;
+        Select();
+        return true;
     }
+
+    private void ApplySettings(AppSettings settings, DateTimeOffset now)
+    {
+        int pageSize = Math.Clamp(settings.VocabularyVisibleRows, 1, 12);
+        bool changed = size != pageSize || random != settings.VocabularyRandom || !entries.SequenceEqual(settings.Vocabulary);
+        if (changed)
+        {
+            entries = settings.Vocabulary.ToArray();
+            size = pageSize;
+            random = settings.VocabularyRandom;
+            RestartCycle();
+            Select();
+        }
+        if (changed || minutes != settings.VocabularyMinutes || enabled != settings.ShowVocabulary)
+            deadline = now.AddMinutes(settings.VocabularyMinutes);
+        minutes = settings.VocabularyMinutes;
+        enabled = settings.ShowVocabulary;
+    }
+
+    private void RestartCycle()
+    {
+        page = 0;
+        if (!random)
+        {
+            order = entries;
+            return;
+        }
+        order = entries.ToArray();
+        Random.Shared.Shuffle(order);
+        int count = Math.Min(size, order.Length);
+        if (order.Length > 1 && order.AsSpan(0, count).SequenceEqual(visible))
+            (order[0], order[^1]) = (order[^1], order[0]);
+    }
+
     private void Select()
     {
-        int count = Math.Min(size, entries.Length);
-        if (!random) { visible = Enumerable.Range(0, count).Select(i => entries[(start + i) % entries.Length]).ToArray(); return; }
-        var indices = Enumerable.Range(0, entries.Length).ToArray(); Random.Shared.Shuffle(indices);
-        // Avoid showing the exact same ordered group when alternatives exist.
-        if (entries.Length > 1 && count > 0 && visible.Length == count && indices.Take(count).Select(i => entries[i]).SequenceEqual(visible))
-            (indices[0], indices[^1]) = (indices[^1], indices[0]);
-        visible = indices.Take(count).Select(i => entries[i]).ToArray();
+        int count = Math.Min(size, order.Length);
+        // Align the last window to the last word so the panel keeps its height.
+        int start = Math.Min(page * size, order.Length - count);
+        visible = order.AsSpan(start, count).ToArray();
     }
 }

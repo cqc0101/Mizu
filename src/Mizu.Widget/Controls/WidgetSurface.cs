@@ -342,9 +342,18 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             lastWordWheel = tick;
             if (tick - lastWordTurn >= 180) {
                 wordWheel += e.Delta;
-                if (Math.Abs(wordWheel) >= 120) { vocabulary.Update(settings, DateTimeOffset.Now); vocabulary.Advance(wordWheel < 0 ? 1 : -1, DateTimeOffset.Now); wordWheel = 0; lastWordTurn = tick; }
+                if (Math.Abs(wordWheel) >= 120)
+                {
+                    if (vocabulary.TurnPage(settings, wordWheel < 0 ? 1 : -1, DateTimeOffset.Now))
+                    {
+                        lastWordTurn = tick;
+                        HoverHints.Close(this);
+                        InvalidateVisual();
+                    }
+                    wordWheel = 0;
+                }
             }
-            HoverHints.Close(this); InvalidateVisual(); e.Handled = true; return;
+            e.Handled = true; return;
         }
         var point = e.GetPosition(this); var area = Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Devices);
         if (area is not null && point.Y >= area.Top && point.Y <= area.Top + area.Height && VisibleDevices.Count > 2)
