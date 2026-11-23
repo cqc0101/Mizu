@@ -44,6 +44,7 @@ public sealed class MainWindow : Window
     private readonly ScaleTransform widgetScale = new(1, 1);
     private int resizeGeneration;
     private bool settingsPreviewQueued, fullPreviewNeeded;
+    private bool workAreaRefreshQueued, movingWindow;
     private string? todoKey;
     public FrameworkElement VisualContent => layout;
     private Border? todoEditor;
@@ -64,16 +65,18 @@ public sealed class MainWindow : Window
     {
         this.persistSettings = persistSettings;
         Settings = settings; State = state ?? new(); store = new();
-        var initialLayout = WidgetLayout.Calculate(settings);
-        Title = "Mizu"; Icon = AppIcons.WindowIcon; Width = 356 * settings.Scale; Height = initialLayout.Height * settings.Scale;
+        var workArea = SystemParameters.WorkArea;
+        var initialLayout = WidgetLayout.Calculate(settings, workAreaHeight: workArea.Height, workAreaWidth: workArea.Width);
+        Title = "Mizu"; Icon = AppIcons.WindowIcon; Width = initialLayout.Width * settings.Scale; Height = initialLayout.Height * settings.Scale;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; AllowsTransparency = true;
         Background = Brushes.Transparent; ShowInTaskbar = false; Topmost = settings.AlwaysOnTop;
         UseLayoutRounding = false;
         HorizontalContentAlignment = HorizontalAlignment.Left; VerticalContentAlignment = VerticalAlignment.Top;
-        Surface = new(State, Settings) { Width = 356, Height = initialLayout.Height, PreviewMaterial = preview };
+        Surface = new(State, Settings) { Width = initialLayout.Width, Height = initialLayout.Height, PreviewMaterial = preview,
+            WorkAreaHeight = workArea.Height, WorkAreaWidth = workArea.Width };
         System.Windows.Automation.AutomationProperties.SetName(Surface, "天气、外设电量与系统状态");
-        layout = new Grid { Width = 356, Height = initialLayout.Height,
-            Clip = new RectangleGeometry(new Rect(0, 0, 356, initialLayout.Height), settings.CornerRadius, settings.CornerRadius) };
+        layout = new Grid { Width = initialLayout.Width, Height = initialLayout.Height,
+            Clip = new RectangleGeometry(new Rect(0, 0, initialLayout.Width, initialLayout.Height), settings.CornerRadius, settings.CornerRadius) };
         layout.Children.Add(Surface);
         layout.Children.Add(todoHost);
         layout.Children.Add(todoEditorHost);
@@ -105,6 +108,7 @@ public sealed class MainWindow : Window
         tray.BalloonTipClicked += (_, _) => Dispatcher.Invoke(() => { OpenSettings(); settingsWindow?.ShowUpdates(); });
         SourceInitialized += (_, _) =>
         {
+            UpdateWorkArea();
             ApplySettings();
             var hwnd = new WindowInteropHelper(this).Handle;
             if (!preview) hidNotification = NativeWindow.WatchHid(hwnd);
@@ -114,10 +118,14 @@ public sealed class MainWindow : Window
         Loaded += (_, _) =>
         {
             RestorePosition();
+            if (UpdateWorkArea()) ApplySettings();
+            else if (appliedLayout is { VocabularyRows: > 0 } geometry) KeepVocabularyInWorkArea(geometry, Settings.Scale);
             if (!preview) Engine.Start();
             if (!preview) displayTimer.Start();
             Updates.Start();
         };
+        LocationChanged += (_, _) => QueueWorkAreaRefresh();
+        DpiChanged += (_, _) => QueueWorkAreaRefresh();
         displayTimer.Tick += (_, _) => {
             if (themeRotation.Update(Settings, DateTimeOffset.UtcNow, ThemePalette.All.Select(p => p.Id))) { ApplySettings(); SaveSettings(); }
             if (IsVisible && Settings.ShowDevices) OnStateChanged();
@@ -136,8 +144,9 @@ public sealed class MainWindow : Window
             if (hardwareArea?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory)
             {
                 var metrics = new[] { HardwareMetric.Cpu, HardwareMetric.Memory, HardwareMetric.CpuTemperature }.Where(m => HardwareMetricInfo.Enabled(m, Settings)).ToArray();
-                HardwareMetric? metric = hardwareArea.Kind == WidgetSection.GpuMemory ? Surface.GpuMetricAt(point.X) :
-                    metrics.Length == 0 ? null : metrics[Math.Clamp((int)((point.X - 30) / (300.0 / metrics.Length)), 0, metrics.Length - 1)];
+                double x = point.X - Surface.SectionInset;
+                HardwareMetric? metric = hardwareArea.Kind == WidgetSection.GpuMemory ? Surface.GpuMetricAt(x) :
+                    metrics.Length == 0 ? null : metrics[Math.Clamp((int)((x - 30) / (300.0 / metrics.Length)), 0, metrics.Length - 1)];
                 var origin = new Point(Left, Top);
                 try { DragMove(); } catch (InvalidOperationException) { }
                 Settings.Left = Left; Settings.Top = Top; SaveSettings();
@@ -176,16 +185,21 @@ public sealed class MainWindow : Window
         var added = visible.FirstOrDefault(d => current.Contains(d.Id) && !onlineDevices.Contains(d.Id))?.Id; onlineDevices = current;
         if (added is not null) State.DevicePage = Math.Max(0, visible.ToList().FindIndex(d => d.Id == added) / 2);
         var target = Surface.TargetLayout;
-        if (appliedLayout is not null && !appliedLayout.Sections.SequenceEqual(target.Sections))
+        if (LayoutChanged(target))
         {
             ApplySettings();
         }
         Surface.InvalidateVisual(); UpdateMediaControls();
     }
+    private bool GeometryChanged(WidgetLayout target) => appliedLayout is null ||
+        appliedLayout.Width != target.Width || !appliedLayout.Sections.SequenceEqual(target.Sections);
+    private bool LayoutChanged(WidgetLayout target) => GeometryChanged(target) ||
+        appliedLayout!.VocabularyColumns != target.VocabularyColumns || appliedLayout.VocabularyRowLimit != target.VocabularyRowLimit;
     private void StartLayoutTransition(WidgetLayout from, WidgetLayout to)
     {
         int generation = ++layoutGeneration;
         layoutFrom = from; layoutTo = to; layoutAnimating = true;
+        Width = Math.Max(Width, Math.Max(from.Width, to.Width) * widgetScale.ScaleX);
         Height = Math.Max(Height, (Math.Max(from.Height, to.Height) + FooterHeight) * widgetScale.ScaleY);
         SetValue(LayoutProgressProperty, 0.0);
         var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
@@ -211,7 +225,7 @@ public sealed class MainWindow : Window
         todoHost.IsHitTestVisible = !Settings.PanelLocked && todo?.Opacity >= .9;
         if (todo is not null)
         {
-            todoHost.Margin = new(30, todo.Top, 0, 0);
+            todoHost.Margin = new(30 + Surface.SectionInset, todo.Top, 0, 0);
             todoHost.Height = todo.Height;
             todoHost.ClipToBounds = true;
         }
@@ -248,17 +262,19 @@ public sealed class MainWindow : Window
     private void UpdateTodoGeometry()
     {
         if (layout is null || Surface is null) return;
-        var baseHeight = Surface.Layout.Height;
+        var geometry = Surface.Layout;
+        var baseHeight = geometry.Height;
         var reveal = HasAddActions ? Math.Clamp(TodoReveal, 0, 1) : 0;
         var height = baseHeight + FooterHeight * reveal;
+        layout.Width = Surface.Width = geometry.Width;
         layout.Height = Surface.Height = height; Surface.FooterHeight = FooterHeight; Surface.FooterReveal = reveal; Surface.InvalidateVisual();
         todoEditorHost.Height = 30 + 38 * EditorExpansion; todoEditorHost.ClipToBounds = true;
-        layout.Clip = new RectangleGeometry(new Rect(0, 0, 356, height), Settings.CornerRadius, Settings.CornerRadius);
-        todoEditorHost.Margin = new(30, baseHeight - 4, 0, 0);
+        layout.Clip = new RectangleGeometry(new Rect(0, 0, geometry.Width, height), Settings.CornerRadius, Settings.CornerRadius);
+        todoEditorHost.Margin = new(30 + Surface.SectionInset, baseHeight - 4, 0, 0);
         todoEditorHost.Opacity = Math.Clamp((reveal - .12) / .88, 0, 1);
         todoEditorHost.RenderTransform = new TranslateTransform(0, 8 * (1 - reveal));
         todoEditorHost.IsHitTestVisible = !Settings.PanelLocked && footerWanted && reveal > .85;
-        if (!footerAnimating && !editorAnimating && !layoutAnimating && !widgetScale.HasAnimatedProperties) { Width = 356 * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
+        if (!footerAnimating && !editorAnimating && !layoutAnimating && !widgetScale.HasAnimatedProperties) { Width = geometry.Width * widgetScale.ScaleX; Height = height * widgetScale.ScaleY; }
     }
     private bool IsInteractive(DependencyObject source)
     {
@@ -285,7 +301,17 @@ public sealed class MainWindow : Window
     }
     private IntPtr WindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == 0x007e) QueueEnsureReachablePosition(); // WM_DISPLAYCHANGE
+        if (msg == 0x007e || msg == 0x001a && wParam.ToInt64() == 0x2f)
+        {
+            QueueEnsureReachablePosition();
+            QueueWorkAreaRefresh();
+        }
+        if (msg == 0x0231) movingWindow = true; // WM_ENTERSIZEMOVE
+        if (msg == 0x0232)
+        {
+            movingWindow = false;
+            QueueWorkAreaRefresh();
+        }
         if (msg == 0x0312 && wParam.ToInt32() == 0x4d5a)
         { ShowInteractive(); handled = true; }
         if (msg == 0x8001)
@@ -300,6 +326,39 @@ public sealed class MainWindow : Window
         var work = SystemParameters.WorkArea;
         Left = Settings.Left ?? work.Right - Width - 40; Top = Settings.Top ?? work.Top + 50;
         EnsureReachablePosition();
+    }
+    private void QueueWorkAreaRefresh()
+    {
+        if (!IsLoaded || movingWindow || workAreaRefreshQueued || disposed) return;
+        workAreaRefreshQueued = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            workAreaRefreshQueued = false;
+            if (!disposed && !movingWindow && UpdateWorkArea()) ApplySettings();
+        }));
+    }
+    private bool UpdateWorkArea()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return false;
+        var work = System.Windows.Forms.Screen.FromHandle(hwnd).WorkingArea;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        double width = work.Width / dpi.DpiScaleX, height = work.Height / dpi.DpiScaleY;
+        if (Math.Abs(height - Surface.WorkAreaHeight) < .1 && Math.Abs(width - Surface.WorkAreaWidth) < .1) return false;
+        Surface.WorkAreaWidth = width; Surface.WorkAreaHeight = height;
+        return true;
+    }
+    private void KeepVocabularyInWorkArea(WidgetLayout target, double scale)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (movingWindow || hwnd == IntPtr.Zero || !NativeWindow.GetWindowRect(hwnd, out var bounds)) return;
+        var work = System.Windows.Forms.Screen.FromHandle(hwnd).WorkingArea;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        int width = (int)Math.Ceiling(target.Width * scale * dpi.DpiScaleX);
+        int height = (int)Math.Ceiling((target.Height + WidgetLayout.ExpandedQuickEntryHeight) * scale * dpi.DpiScaleY);
+        int x = Math.Clamp(bounds.Left, work.Left, Math.Max(work.Left, work.Right - width));
+        int y = Math.Clamp(bounds.Top, work.Top, Math.Max(work.Top, work.Bottom - height));
+        if (x != bounds.Left || y != bounds.Top) NativeWindow.MoveToPhysicalPosition(hwnd, x, y);
     }
     private void QueueEnsureReachablePosition()
     {
@@ -325,7 +384,7 @@ public sealed class MainWindow : Window
             var area = System.Drawing.Rectangle.Intersect(window, work);
             return area.Width >= Math.Min(96, window.Width) && area.Height >= Math.Min(96, window.Height);
         });
-    public void ApplySettings()
+    public void ApplySettings(bool animateScale = false)
     {
         var previous = Surface.TransitionLayout ?? appliedLayout;
         layoutGeneration++;
@@ -336,13 +395,13 @@ public sealed class MainWindow : Window
         HoverHints.SetPalette(this, ThemePalette.Get(Settings.Theme));
         HoverHints.SetIsDark(this, ThemePalette.Get(Settings.Theme).Dark);
         var calculated = Surface.TargetLayout; appliedLayout = calculated;
-        bool transition = previous is not null && IsLoaded && Settings.SmoothResize && !previous.Sections.SequenceEqual(calculated.Sections);
+        bool transition = previous is not null && IsLoaded && Settings.SmoothResize &&
+            (previous.Width != calculated.Width || !previous.Sections.SequenceEqual(calculated.Sections));
         layoutAnimating = transition;
         if (transition) Surface.TransitionLayout = previous;
         var heightChanged = Math.Abs(layout.Height - calculated.Height) > .01;
         Topmost = Settings.AlwaysOnTop;
         layout.Height = Surface.Height = calculated.Height;
-        layout.Clip = new RectangleGeometry(new Rect(0, 0, 356, calculated.Height), Settings.CornerRadius, Settings.CornerRadius);
         toolbar.Margin = new(0, 6, Math.Max(24, Settings.CornerRadius * .65), 0);
         var area = calculated.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Todo);
         var key = $"{Settings.ShowTodo}|{Settings.ShowVocabulary}|{calculated.Height}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
@@ -355,10 +414,11 @@ public sealed class MainWindow : Window
         if (transition)
         {
             Surface.TransitionLayout = previous;
-            UpdateTodoGeometry(); ResizeWidget(false);
+            UpdateTodoGeometry();
             StartLayoutTransition(previous!, calculated);
+            ResizeWidget(animateScale);
         }
-        else { UpdateTodoGeometry(); ResizeWidget(!heightChanged); }
+        else { UpdateTodoGeometry(); ResizeWidget(animateScale || !heightChanged); }
     }
     private void ApplyPanelLock()
     {
@@ -384,14 +444,25 @@ public sealed class MainWindow : Window
         {
             settingsPreviewQueued = false; var full = fullPreviewNeeded; fullPreviewNeeded = false;
             if (disposed) return;
-            if (full) ApplySettings(); else ResizeWidget(true);
+            var target = Surface.TargetLayout;
+            if (full || GeometryChanged(target)) ApplySettings(animateScale: !full);
+            else
+            {
+                if (LayoutChanged(target))
+                {
+                    appliedLayout = target;
+                    SettingsApplied?.Invoke();
+                }
+                ResizeWidget(true);
+            }
         }));
     }
     private void ResizeWidget(bool animate)
     {
         double target = Math.Clamp(Settings.Scale, .4, 1.2);
         double start = widgetScale.ScaleX; int generation = ++resizeGeneration;
-        double width = 356 * target, height = layout.Height * target;
+        var geometry = appliedLayout ?? Surface.TargetLayout;
+        double width = geometry.Width * target, height = geometry.Height * target;
         void Finish()
         {
             if (generation != resizeGeneration) return;
@@ -399,15 +470,22 @@ public sealed class MainWindow : Window
             widgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null); widgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             layout.CacheMode = null;
             UpdateTodoGeometry();
-            Width = width; Height = footerAnimating || editorAnimating || layoutAnimating ? Math.Max(Height, (Surface.Layout.Height + FooterHeight) * target) : layout.Height * target;
-            if (IsLoaded && Top < SystemParameters.WorkArea.Bottom && Top + height > SystemParameters.WorkArea.Bottom)
+            Width = layoutAnimating ? Math.Max(layout.Width, geometry.Width) * target : width;
+            Height = footerAnimating || editorAnimating || layoutAnimating
+                ? Math.Max(Height, (Surface.Layout.Height + FooterHeight) * target)
+                : layout.Height * target;
+            if (IsLoaded && geometry.VocabularyRows > 0)
+                KeepVocabularyInWorkArea(geometry, target);
+            else if (IsLoaded && Top < SystemParameters.WorkArea.Bottom && Top + height > SystemParameters.WorkArea.Bottom)
                 Top = Math.Max(SystemParameters.WorkArea.Top, SystemParameters.WorkArea.Bottom - height - 12);
         }
         if (!animate || !IsLoaded || !Settings.SmoothResize || Math.Abs(start - target) < .0001) { Finish(); return; }
         // Resize the transparent HWND once to hold both sizes. Animate only the
         // content transform, then shrink the bounds and restore vector rendering.
         double reserveScale = Math.Max(start, target);
-        Width = Math.Max(Width, 356 * reserveScale); Height = Math.Max(Height, layout.Height * reserveScale);
+        double reserveWidth = layoutAnimating ? Math.Max(layoutFrom!.Width, geometry.Width) : geometry.Width;
+        double reserveHeight = layoutAnimating ? Math.Max(layoutFrom!.Height, geometry.Height) + FooterHeight : layout.Height;
+        Width = Math.Max(Width, reserveWidth * reserveScale); Height = Math.Max(Height, reserveHeight * reserveScale);
         layout.CacheMode ??= new BitmapCache(1.5);
         var motion = new DoubleAnimation(start, target, TimeSpan.FromMilliseconds(150))
         { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
@@ -420,7 +498,7 @@ public sealed class MainWindow : Window
     {
         var area = Surface.Layout.Sections.FirstOrDefault(s => s.Kind == WidgetSection.Media);
         var m = State.Media;
-        if (area is not null) mediaHost.Margin = new(113, area.Top + 62, 0, 0);
+        if (area is not null) mediaHost.Margin = new(113 + Surface.SectionInset, area.Top + 62, 0, 0);
         mediaHost.Opacity = area is null ? 0 : area.Opacity * Math.Clamp(area.Height / 104, 0, 1);
         mediaHost.IsHitTestVisible = !Settings.PanelLocked && area is { Height: >= 94, Opacity: >= .9 };
         var key = $"{area is not null}|{m.Playing}|{m.Previous}|{m.Toggle}|{m.Next}|{Settings.Theme}";
@@ -429,7 +507,7 @@ public sealed class MainWindow : Window
         mediaHost.Visibility = area is null ? Visibility.Collapsed : Visibility.Visible;
         if (area is null) return;
         mediaHost.HorizontalAlignment = HorizontalAlignment.Left; mediaHost.VerticalAlignment = VerticalAlignment.Top;
-        mediaHost.Margin = new(113, area.Top + 62, 0, 0); mediaHost.Height = 32; mediaHost.Width = 140;
+        mediaHost.Margin = new(113 + Surface.SectionInset, area.Top + 62, 0, 0); mediaHost.Height = 32; mediaHost.Width = 140;
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var (command, icon, label, enabled) in new[] { ("previous", "previous", "上一首", m.Previous), ("toggle", m.Playing ? "pause" : "play", m.Playing ? "暂停" : "播放", m.Toggle), ("next", "next", "下一首", m.Next) })
         {

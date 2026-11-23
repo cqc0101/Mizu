@@ -47,6 +47,7 @@ public sealed class AppSettings
     public bool ShowVocabulary { get; set; }
     public bool ShowClock { get; set; }
     public int VocabularyVisibleRows { get; set; } = 1;
+    public int VocabularyColumns { get; set; } = 1;
     public bool VocabularyRandom { get; set; }
     public int VocabularyIntervalSeconds { get; set; } = 30;
     public int? VocabularyIntervalMinutes { get; set; }
@@ -105,7 +106,8 @@ public sealed class AppSettings
         GlassOpacity = double.IsFinite(GlassOpacity) ? Math.Clamp(GlassOpacity, .15, .95) : .62;
         CornerRadius = double.IsFinite(CornerRadius) ? Math.Clamp(CornerRadius, 0, 64) : 30;
         PoetryLines = 1; // Kept only for compatibility with earlier settings files.
-        VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, 12);
+        VocabularyVisibleRows = Math.Clamp(VocabularyVisibleRows, 1, WidgetLayout.MaximumVocabularyRows);
+        VocabularyColumns = Math.Clamp(VocabularyColumns, 1, WidgetLayout.MaximumVocabularyColumns);
         VocabularyMeaningFontSize = Math.Clamp(VocabularyMeaningFontSize, MinimumVocabularyMeaningFontSize, MaximumVocabularyMeaningFontSize);
         VocabularySpacing = Math.Clamp(VocabularySpacing, 0, 40);
         SectionOrder = (SectionOrder ?? []).Where(s => Enum.IsDefined(s)).Distinct().Concat(new AppSettings().SectionOrder).Distinct().ToList();

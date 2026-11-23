@@ -181,6 +181,23 @@ Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加单词")).RaiseEvent(new 
 Check(settingsLive.Vocabulary.Single().Word=="serene" && settingsLive.Vocabulary.Single().Meaning=="宁静的","Vocabulary controls add a word and meaning");
 var showWords=Desc<CheckBox>(dialog).Single(c=>Equals(c.Content,"在组件上显示单词本"));showWords.IsChecked=true;main.UpdateLayout();
 Check(main.Surface.TargetLayout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Vocabulary toggle adds its section");
+var columnSlider = Desc<Slider>(dialog).Single(s => System.Windows.Automation.AutomationProperties.GetName(s) == "显示列数");
+var rowSlider = Desc<Slider>(dialog).Single(s => System.Windows.Automation.AutomationProperties.GetName(s) == "显示行数");
+settingsLive.VocabularyVisibleRows = WidgetLayout.MaximumVocabularyRows;
+main.ApplySettings();
+Check(rowSlider.Maximum == main.Surface.TargetLayout.VocabularyRowLimit && rowSlider.Value == rowSlider.Maximum &&
+    settingsLive.VocabularyVisibleRows == WidgetLayout.MaximumVocabularyRows &&
+    Desc<TextBlock>(dialog).Any(t => t.Text.StartsWith("当前上限")), "The settings show the current row cap and preserve the requested rows");
+settingsLive.VocabularyVisibleRows = 1;
+columnSlider.Value = 2;
+Pump(480); main.UpdateLayout();
+Check(settingsLive.VocabularyColumns == 2 && main.Surface.TargetLayout.VocabularyColumns == 2 &&
+    main.Width > WidgetLayout.BaseWidth * settingsLive.Scale &&
+    Math.Abs(main.Width - main.Surface.TargetLayout.Width * settingsLive.Scale) < 1, "The column setting visibly widens the widget");
+columnSlider.Value = 1;
+Pump(480); main.UpdateLayout();
+Check(Math.Abs(main.Width - WidgetLayout.BaseWidth * settingsLive.Scale) < 1, "Returning to one column restores the base width");
+Check(Desc<Button>(dialog).Any(b => Equals(b.Content, "导出单词本")), "The settings include vocabulary export");
 var meaningSize = Desc<Slider>(dialog).Single(s => System.Windows.Automation.AutomationProperties.GetName(s) == "中文释义字号");
 Pump(330);
 Capture(main.VisualContent);
@@ -199,7 +216,9 @@ meaningSize.Value = AppSettings.DefaultVocabularyMeaningFontSize;
 Pump(330);
 WordInput("新单词").Text="SERENE";Desc<Button>(dialog).Single(b=>Equals(b.Content,"添加单词")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(settingsLive.Vocabulary.Count==1,"Duplicate word does not replace existing notes");
-Desc<Button>(dialog).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="删除单词").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+var deleteWord = Desc<Button>(dialog).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="删除单词");
+Check(deleteWord.Content is IconView && deleteWord.Width == deleteWord.Height, "Vocabulary delete uses a square icon button");
+deleteWord.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(settingsLive.Vocabulary.Count==0 && !main.Surface.TargetLayout.Sections.Any(s=>s.Kind==WidgetSection.Vocabulary),"Deleting the final word removes its reserved space");
 tabs.SelectedIndex=8;dialog.UpdateLayout();
 Check(Desc<TextBlock>(dialog).Any(t=>t.Text=="v0.6.0") && Desc<TextBlock>(dialog).Any(t=>t.Text=="v0.5.3"),"Packaged version history contains current and prior releases");
@@ -221,7 +240,8 @@ Check(!sliders[2].IsSnapToTickEnabled && Math.Abs(settingsLive.Scale-1.1345)<.00
 
 Check(animated.ScaleX>1 && animated.ScaleX<1.1345 && animated.HasAnimatedProperties,"Scale has intermediate animation frames");
 sliders[2].Value=86.3;Pump(25);sliders[2].Value=110.7;Pump(240);
-Check(Math.Abs(main.Width-356*1.107)<1 && Math.Abs(animated.ScaleX-1.107)<.0001,"Interrupted resize settles on latest requested size");
+Check(Math.Abs(main.Width-356*1.107)<1 && Math.Abs(animated.ScaleX-1.107)<.0001,
+    $"Interrupted resize settles on latest requested size (width {main.Width:F2}, scale {animated.ScaleX:F5}, configured {settingsLive.Scale:F5})");
 Check(!animated.HasAnimatedProperties && grid.CacheMode is null,"Settled widget restores crisp vector rendering");
 settingsLive.ShowNetwork=true;settingsLive.NetworkProbeTargets=Enumerable.Repeat("1.1.1.1",8).ToList();settingsLive.ShowVocabulary=true;settingsLive.VocabularyVisibleRows=8;
 settingsLive.Vocabulary=Enumerable.Range(0,8).Select(i=>new VocabularyEntry{Word="word"+i}).ToList();main.ApplySettings();
@@ -322,8 +342,9 @@ main.Settings.VocabularyVisibleRows=2;main.ApplySettings();Pump(330);main.Update
 Check(main.Surface.TargetLayout.Sections[0].Kind==WidgetSection.Clock && main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==132,"Clock and two word groups occupy separate sections");
 var scrollVocabulary = typeof(WidgetSurface).GetMethod("ScrollVocabulary", BindingFlags.NonPublic | BindingFlags.Instance)!;
 double WordOffset() => (double)main.Surface.GetValue(WidgetSurface.VocabularyOffsetProperty);
-double WordBaseline(string word) => DrawingGlyphs(VisualTreeHelper.GetDrawing(main.Surface))
-    .First(run => run.Characters is { } characters && string.Concat(characters) == word).BaselineOrigin.Y;
+Point WordPosition(string word) => DrawingGlyphs(VisualTreeHelper.GetDrawing(main.Surface))
+    .First(run => run.Characters is { } characters && string.Concat(characters) == word).BaselineOrigin;
+double WordBaseline(string word) => WordPosition(word).Y;
 double initialBaseline = WordBaseline("gentle");
 scrollVocabulary.Invoke(main.Surface, [-120]);
 Pump(45);
@@ -338,6 +359,14 @@ double settledOffset = WordOffset();
 double viewportHeight = main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height;
 Check(Math.Abs(settledOffset - 1) < .001 && viewportHeight == 132,
     $"Fast scrolling stops on the final row and keeps the vocabulary viewport height: {settledOffset}, {viewportHeight}");
+main.Settings.VocabularyColumns = 2;main.ApplySettings();Pump(330);main.UpdateLayout();
+var topLeftWord = WordPosition("serene");
+var topRightWord = WordPosition("gentle");
+var secondRowWord = WordPosition("bloom");
+Check(topRightWord.X > topLeftWord.X && topRightWord.Y == topLeftWord.Y &&
+    secondRowWord.X == topLeftWord.X && secondRowWord.Y > topLeftWord.Y && WordOffset() == 0,
+    "The rendered grid holds two words in the top row and the remaining word in the next row");
+main.Settings.VocabularyColumns = 1;main.ApplySettings();Pump(330);
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]);Pump(320);
 Button AddChoice(string name)=>Desc<Button>(main).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==name);
 Check(AddChoice("添加事件").IsVisible && AddChoice("添加单词").IsVisible,"Both enabled add actions appear side by side");

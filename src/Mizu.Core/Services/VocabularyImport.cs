@@ -19,13 +19,16 @@ public static class VocabularyImport
         using var parser = new TextFieldParser(reader) { TextFieldType = FieldType.Delimited, HasFieldsEnclosedInQuotes = true, TrimWhiteSpace = true };
         parser.SetDelimiters(delimiter);
         var result = new List<VocabularyEntry>();
+        bool firstRecord = true;
         while (!parser.EndOfData)
         {
             var fields = parser.ReadFields() ?? [];
             if (fields.Length == 0 || string.IsNullOrWhiteSpace(fields[0])) continue;
             if (fields.Length > 2) throw new FormatException("每行应包含单词和释义两列；CSV 中包含逗号的释义请用双引号包围");
-            if (result.Count == 0 && fields[0].Equals("word", StringComparison.OrdinalIgnoreCase) && fields.Length == 2 && fields[1].Equals("meaning", StringComparison.OrdinalIgnoreCase)) continue;
-            result.Add(new() { Word = fields[0], Meaning = fields.Length == 2 ? fields[1] : "" });
+            bool isHeader = firstRecord && fields[0].Equals("word", StringComparison.OrdinalIgnoreCase) &&
+                fields.Length == 2 && fields[1].Equals("meaning", StringComparison.OrdinalIgnoreCase);
+            firstRecord = false;
+            if (!isHeader) result.Add(new() { Word = fields[0], Meaning = fields.Length == 2 ? fields[1] : "" });
         }
         return result;
     }

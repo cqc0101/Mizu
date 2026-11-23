@@ -9,6 +9,17 @@ public sealed record SectionLayout(WidgetSection Kind, double Top, double Height
 }
 public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
 {
+    public const int MaximumVocabularyRows = 24;
+    public const int MaximumVocabularyColumns = 6;
+    public const double BaseWidth = 356;
+    public const double VocabularyInset = 31;
+    public const double VocabularyColumnGap = 16;
+    public const double ExpandedQuickEntryHeight = 82;
+    public const double DesktopClearance = 24;
+    public int VocabularyRowLimit { get; init; } = MaximumVocabularyRows;
+    public int VocabularyRows { get; init; }
+    public int VocabularyColumns { get; init; } = 1;
+    public double Width { get; init; } = BaseWidth;
     public const double VocabularyMeaningTop = 34;
     public static double VocabularyRowHeight(AppSettings s)
     {
@@ -26,7 +37,8 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
             // Switching order at zero opacity keeps the panel's rows from passing through each other.
             var phase = progress < .5 ? from : to;
             double opacity = Math.Abs(progress * 2 - 1);
-            return new(phase.Sections.Select(s => s with { Opacity = s.Opacity * opacity }).ToArray(), height);
+            return to with { Sections = phase.Sections.Select(s => s with { Opacity = s.Opacity * opacity }).ToArray(),
+                Height = height, Width = Mix(from.Width, to.Width, progress) };
         }
 
         // Insert each new row immediately before the next shared row. Rows missing
@@ -68,10 +80,11 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
                 Opacity = Mix(old.Opacity, next.Opacity, progress)
             };
         }
-        return new(sections, height);
+        return to with { Sections = sections, Height = height, Width = Mix(from.Width, to.Width, progress) };
     }
     private static double Mix(double from, double to, double progress) => from + (to - from) * progress;
-    public static WidgetLayout Calculate(AppSettings s, int deviceCount = 2)
+    public static WidgetLayout Calculate(AppSettings s, int deviceCount = 2, double workAreaHeight = double.PositiveInfinity,
+        double workAreaWidth = double.PositiveInfinity)
     {
         var rows = new List<SectionLayout>(); double y = 32;
         void Add(WidgetSection kind, double height) { if (height <= 0) return; if (rows.Count > 0) y += 16; rows.Add(new(kind, y, height)); y += height; }
@@ -89,16 +102,36 @@ public sealed record WidgetLayout(SectionLayout[] Sections, double Height)
         if (s.ShowNetwork) Add(WidgetSection.Network, 60 + (s.NetworkProbeTargets?.Count ?? 1) * (s.ShowNetworkProbeIp ? 52 : 32));
         if (s.ShowMedia) Add(WidgetSection.Media, 104);
         if (s.ShowPoetry) Add(WidgetSection.Poetry, 64);
-        if (s.ShowVocabulary && s.Vocabulary.Count > 0) Add(WidgetSection.Vocabulary, Math.Min(s.Vocabulary.Count, s.VocabularyVisibleRows) * VocabularyRowHeight(s));
         if (s.ShowTodo)
         {
             var count = s.Todos.Count(t => !s.HideCompletedTodos || !t.Completed);
             if (count > 0) Add(WidgetSection.Todo, Math.Min(count, s.TodoVisibleRows) * 32);
         }
+        double vocabularyRowHeight = VocabularyRowHeight(s);
+        double scale = Math.Clamp(s.Scale, .4, 1.2);
+        double columnWidth = Math.Max(180, 180 * s.TextScale);
+        if (!s.VocabularyHideMeaning) columnWidth = Math.Max(columnWidth, 7 * s.VocabularyMeaningFontSize);
+        double WidthFor(int count) => 2 * VocabularyInset + count * columnWidth + (count - 1) * VocabularyColumnGap;
+        int columns = Math.Clamp(s.VocabularyColumns, 1, MaximumVocabularyColumns);
+        while (columns > 1 && WidthFor(columns) * scale > workAreaWidth - DesktopClearance) columns--;
+        int rowLimit = MaximumVocabularyRows;
+        if (double.IsFinite(workAreaHeight) && workAreaHeight > 0)
+        {
+            double available = (workAreaHeight - DesktopClearance) / scale - ExpandedQuickEntryHeight;
+            double otherHeight = y + (rows.Count == 0 ? 0 : 16) + 20;
+            rowLimit = (int)Math.Clamp(Math.Floor((available - otherHeight) / vocabularyRowHeight), 1, MaximumVocabularyRows);
+        }
+        int vocabularyRows = s.ShowVocabulary ? Math.Min((s.Vocabulary.Count + columns - 1) / columns,
+            Math.Clamp(s.VocabularyVisibleRows, 1, rowLimit)) : 0;
+        Add(WidgetSection.Vocabulary, vocabularyRows * vocabularyRowHeight);
         var order = s.SectionOrder;
         var sorted = rows.OrderBy(row => { var index = order.IndexOf(row.Kind); return index < 0 ? int.MaxValue : index; }).ToArray();
         y = 32;
         for (int i = 0; i < sorted.Length; i++) { if (i > 0) y += 16; sorted[i] = sorted[i] with { Top = y }; y += sorted[i].Height; }
-        return new(sorted, Math.Max(104, y + 20));
+        return new(sorted, Math.Max(104, y + 20))
+        {
+            VocabularyRowLimit = rowLimit, VocabularyRows = vocabularyRows, VocabularyColumns = columns,
+            Width = vocabularyRows > 0 && columns > 1 ? WidthFor(columns) : BaseWidth
+        };
     }
 }

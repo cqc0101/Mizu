@@ -118,6 +118,24 @@ var deviceLayoutSettings=new AppSettings();Check(WidgetLayout.Calculate(deviceLa
 var twelveWords=new AppSettings {ShowVocabulary=true,VocabularyVisibleRows=12,Vocabulary=Enumerable.Range(0,12).Select(i=>new VocabularyEntry {Word="word"+i}).ToList()};twelveWords.Validate();var twelveRotation=new VocabularyRotation();twelveRotation.Update(twelveWords,now);
 Check(twelveRotation.VisibleRowCount==12 && WidgetLayout.Calculate(twelveWords).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==12*66,"All twelve requested word groups are selected and given space");
 Check(!WidgetLayout.Calculate(deviceLayoutSettings,0).Sections.Any(s=>s.Kind==WidgetSection.Devices),"Zero devices reserve no section");
+var vocabularyGridSettings = new AppSettings
+{
+    ShowVocabulary = true, VocabularyColumns = 6, VocabularyVisibleRows = 24, Scale = .8,
+    ShowWeather = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false, ShowDevices = true,
+    Vocabulary = Enumerable.Range(1, 180).Select(i => new VocabularyEntry { Word = i.ToString() }).ToList()
+};
+var roomyVocabulary = WidgetLayout.Calculate(vocabularyGridSettings, 0, 1040, 1920);
+var busierVocabulary = WidgetLayout.Calculate(vocabularyGridSettings, 2, 1040, 1920);
+Check(roomyVocabulary.VocabularyRows > busierVocabulary.VocabularyRows && roomyVocabulary.VocabularyRows > 12 &&
+    (roomyVocabulary.Height + WidgetLayout.ExpandedQuickEntryHeight) * .8 <= 1040 - WidgetLayout.DesktopClearance,
+    "The word grid uses space freed by other modules and leaves room for the quick editor");
+var narrowVocabulary = WidgetLayout.Calculate(vocabularyGridSettings, 0, 1040, 720);
+Check(roomyVocabulary.VocabularyColumns == 6 && narrowVocabulary.VocabularyColumns < 6 && narrowVocabulary.VocabularyColumns > 1 &&
+    narrowVocabulary.Width * .8 <= 720 - WidgetLayout.DesktopClearance && vocabularyGridSettings.VocabularyColumns == 6 &&
+    vocabularyGridSettings.VocabularyVisibleRows == 24, "A narrower work area limits columns without changing the saved preference");
+Check(WidgetLayout.Calculate(vocabularyGridSettings, 0, 4000, 1920).VocabularyRows == 24, "A tall work area caps the grid at twenty-four rows");
+vocabularyGridSettings.Vocabulary.Clear();
+Check(WidgetLayout.Calculate(vocabularyGridSettings).Width == WidgetLayout.BaseWidth, "An empty word grid does not widen the panel");
 var themeSettings=new AppSettings {RandomThemeEnabled=true,ThemeIntervalMinutes=1,Theme="light"};var themeRotation=new ThemeRotation();
 Check(!themeRotation.Update(themeSettings,now,new[]{"light","dark"}) && !themeRotation.Update(themeSettings,now.AddSeconds(59),new[]{"light","dark"}),"Theme stays stable before its minute deadline");
 Check(themeRotation.Update(themeSettings,now.AddMinutes(1),new[]{"light","dark"}) && themeSettings.Theme=="dark","Random theme changes at deadline and excludes current color");
@@ -134,6 +152,18 @@ var parsedWords=VocabularyImport.Parse("word,meaning\nserene,\"宁静,平和\"\n
 Check(parsedWords.Count==2 && parsedWords[0].Meaning=="宁静,平和" && parsedWords[1].Word=="say \"hello\"", "CSV handles headers, quoted commas and escaped quotes");
 Check(VocabularyImport.Parse("serene\t宁静\ncalm\t平静", ".tsv").Count==2 && VocabularyImport.Parse("serene\ncalm", ".txt").Count==2,"TSV and word-only text import");
 Check(VocabularyImport.Parse("[{\"word\":\"serene\",\"meaning\":\"宁静\"}]", ".json")[0].Meaning=="宁静", "JSON imports case-insensitive word and meaning fields");
+VocabularyEntry[] exportWords =
+[
+    new() { Word = "word", Meaning = "meaning" },
+    new() { Word = "say \"hello\"", Meaning = "问好,打招呼\r\n第二行" },
+    new() { Word = "café", Meaning = "" }
+];
+foreach (string extension in new[] { ".csv", ".json" })
+{
+    var roundtrip = VocabularyImport.Parse(VocabularyExport.Serialize(exportWords, extension), extension);
+    Check(roundtrip.Select(w => (w.Word, w.Meaning)).SequenceEqual(exportWords.Select(w => (w.Word, w.Meaning))),
+        $"Vocabulary export reimports all entries, preserving order, punctuation, Unicode and multiline definitions in {extension}");
+}
 bool badImport=false;try {VocabularyImport.Parse("[{\"Meaning\":\"missing word\"}]", ".json");}catch(FormatException){badImport=true;}
 Check(badImport,"Malformed JSON book rejects missing words before any import");
 var rotationSettings=new AppSettings {ShowVocabulary=true,VocabularyVisibleRows=2,VocabularyIntervalMinutes=1,Vocabulary=[new(){Word="one",Meaning="一"},new(){Word="two"},new(){Word="three"},new(){Word="four"}]};
@@ -179,11 +209,25 @@ pagingSettings.VocabularyVisibleRows = 12;
 paging.Update(pagingSettings, now.AddMinutes(4));
 paging.Scroll(pagingSettings, -120, 0, now.AddMinutes(4));
 Check(paging.VisibleRowCount == 8 && paging.Offset == 0, "A list that fits in the viewport stays put");
+var multiColumnPaging = new VocabularyRotation();
+pagingSettings.VocabularyRandom = false;
+pagingSettings.VocabularyVisibleRows = 3;
+multiColumnPaging.Update(pagingSettings, now, 2, 3);
+Check(multiColumnPaging.VisibleRowCount == 2 && multiColumnPaging.TotalRowCount == 3, "A last partial row occupies one row of the multi-column viewport");
+multiColumnPaging.Scroll(pagingSettings, -960, 0, now, 2, 3);
+Check(multiColumnPaging.Offset == 1 && multiColumnPaging.Order.Skip((int)multiColumnPaging.Offset * 3).First().Word == "4",
+    "Multi-column scrolling stops with the last partial row visible and keeps row-major order");
+multiColumnPaging.Update(pagingSettings, now, 2, 2);
+Check(multiColumnPaging.Offset == 1 && multiColumnPaging.Order[2].Word == "3", "Changing columns keeps the previous leading word in view");
+multiColumnPaging.Scroll(pagingSettings, 960, 1, now, 2, 2);
+Check(multiColumnPaging.Offset == 0, "Multi-column wheel scrolling stops at the first row");
 rotationSettings.ShowVocabulary=true;
 rotationSettings.VocabularyHideMeaning=true;var wordArea=WidgetLayout.Calculate(rotationSettings).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
 Check(wordArea.Height==84,"Hidden meanings release unused row height");
 rotationSettings.ShowClock=true;Check(WidgetLayout.Calculate(rotationSettings).Sections[0].Kind==WidgetSection.Clock,"Clock appears before weather");
-rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();Check(rotationSettings.VocabularyVisibleRows==12 && rotationSettings.VocabularyIntervalSeconds==60,"Invalid rotation settings are bounded");
+rotationSettings.VocabularyVisibleRows=99;rotationSettings.VocabularyColumns=99;rotationSettings.VocabularyIntervalSeconds=0;rotationSettings.Validate();
+Check(rotationSettings.VocabularyVisibleRows==WidgetLayout.MaximumVocabularyRows && rotationSettings.VocabularyColumns==WidgetLayout.MaximumVocabularyColumns &&
+    rotationSettings.VocabularyIntervalSeconds==60,"Invalid rotation settings are bounded");
 var q = HidppProtocol.Request(1, 7, 1, 10);
 byte[] reply = new byte[20];
 new byte[] { 0x11, 1, 7, 0x1a, 82, 8, 0 }.CopyTo(reply, 0);

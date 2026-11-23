@@ -9,7 +9,7 @@ namespace Mizu.Widget.Controls;
 
 public sealed class WidgetSurface(WidgetState state, AppSettings settings) : FrameworkElement
 {
-    public const double SurfaceWidth = 356, SurfaceHeight = 472;
+    public const double SurfaceWidth = WidgetLayout.BaseWidth, SurfaceHeight = 472;
     public static readonly DependencyProperty FooterRevealProperty = DependencyProperty.Register(nameof(FooterReveal), typeof(double), typeof(WidgetSurface), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
     public double FooterReveal { get => (double)GetValue(FooterRevealProperty); set => SetValue(FooterRevealProperty, value); }
     public double FooterHeight { get; set; } = 44;
@@ -18,9 +18,12 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     private string? weatherConfiguration;
     private int weatherGeneration;
     public bool PreviewMaterial { get; set; }
-    public WidgetLayout TargetLayout => WidgetLayout.Calculate(settings, VisibleDevices.Count);
+    public double WorkAreaHeight { get; set; } = double.PositiveInfinity;
+    public double WorkAreaWidth { get; set; } = double.PositiveInfinity;
+    public WidgetLayout TargetLayout => WidgetLayout.Calculate(settings, VisibleDevices.Count, WorkAreaHeight, WorkAreaWidth);
     public WidgetLayout? TransitionLayout { get; set; }
     public WidgetLayout Layout => TransitionLayout ?? TargetLayout;
+    public double SectionInset => Math.Max(0, (Width - SurfaceWidth) / 2);
     private readonly PeripheralPresence presence = new();
     private readonly DevicePager pager = new();
     private readonly VocabularyRotation vocabulary = new();
@@ -30,6 +33,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     private double vocabularyScrollTarget;
     private int vocabularyScrollGeneration;
     private IReadOnlyList<VocabularyEntry>? drawnVocabularyOrder;
+    private int drawnVocabularyColumns = 1;
     private readonly List<string> deviceOrder = [];
     public IReadOnlyList<Peripheral> VisibleDevices
     {
@@ -69,18 +73,24 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         base.OnRender(d);
         foreground = Art.Brush(Palette.Text); secondary = Art.Brush(Palette.Secondary);
         quiet = Art.Brush(Palette.Quiet); green = Art.Brush(Palette.Accent); line = Art.Brush(Palette.Line);
-        var layout = Layout; double height = layout.Height + FooterHeight * FooterReveal, radius = settings.CornerRadius;
-        vocabulary.Update(settings, DateTimeOffset.Now);
-        SyncVocabularyOffset(snap: vocabulary.Offset < vocabularyScrollTarget);
+        var target = TargetLayout;
+        var layout = TransitionLayout ?? target;
+        double height = layout.Height + FooterHeight * FooterReveal, radius = settings.CornerRadius;
+        double width = layout.Width;
+        double inset = (width - SurfaceWidth) / 2;
+        vocabulary.Update(settings, DateTimeOffset.Now, target.VocabularyRowLimit, target.VocabularyColumns);
+        bool columnsChanged = drawnVocabularyColumns != target.VocabularyColumns;
+        drawnVocabularyColumns = target.VocabularyColumns;
+        SyncVocabularyOffset(snap: columnsChanged || vocabulary.Offset < vocabularyScrollTarget);
         var baseColor = Art.Brush(Palette.Base).Color;
         baseColor.A = PreviewMaterial ? (byte)212 : (byte)(settings.GlassOpacity * 255);
         var glass = new LinearGradientBrush(baseColor, Color.FromArgb((byte)Math.Max(16, baseColor.A - 18), baseColor.R, baseColor.G, baseColor.B), 95);
-        d.PushClip(new RectangleGeometry(new(0, 0, SurfaceWidth, height), radius, radius));
-        d.DrawRoundedRectangle(glass, null, new(0, 0, SurfaceWidth, height), radius, radius);
+        d.PushClip(new RectangleGeometry(new(0, 0, width, height), radius, radius));
+        d.DrawRoundedRectangle(glass, null, new(0, 0, width, height), radius, radius);
         var glow = new RadialGradientBrush(Color.FromArgb(Dark ? (byte)18 : (byte)68, 255, 255, 255), Colors.Transparent)
         { GradientOrigin = new(.1, .0), Center = new(.1, .0), RadiusX = 1.1, RadiusY = .7 };
-        d.DrawRectangle(glow, null, new(0, 0, SurfaceWidth, height));
-        d.DrawRoundedRectangle(null, Art.Pen(Art.Brush(Dark ? "#38FFFFFF" : "#C8FFFFFF"), 1.1), new(.7, .7, SurfaceWidth - 1.4, height - 1.4), Math.Max(0, radius - .7), Math.Max(0, radius - .7));
+        d.DrawRectangle(glow, null, new(0, 0, width, height));
+        d.DrawRoundedRectangle(null, Art.Pen(Art.Brush(Dark ? "#38FFFFFF" : "#C8FFFFFF"), 1.1), new(.7, .7, width - 1.4, height - 1.4), Math.Max(0, radius - .7), Math.Max(0, radius - .7));
         for (int i = 0; i < layout.Sections.Length; i++)
         {
             var section = layout.Sections[i];
@@ -89,9 +99,12 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             if (transitioning)
             {
                 d.PushOpacity(section.Opacity);
-                d.PushClip(new RectangleGeometry(new Rect(0, section.Top - 15, SurfaceWidth, section.Height + 15)));
+                d.PushClip(new RectangleGeometry(new Rect(0, section.Top - 15, width, section.Height + 15)));
             }
-            if (i > 0 && !(section.Kind == WidgetSection.Todo && !settings.Todos.Any(t => !settings.HideCompletedTodos || !t.Completed))) Art.Line(d, Art.Pen(line, .8), 29, section.Top - 8, 327, section.Top - 8);
+            bool isVocabulary = section.Kind == WidgetSection.Vocabulary;
+            d.PushTransform(new TranslateTransform(isVocabulary ? 0 : inset, 0));
+            if (i > 0 && !(section.Kind == WidgetSection.Todo && !settings.Todos.Any(t => !settings.HideCompletedTodos || !t.Completed)))
+                Art.Line(d, Art.Pen(line, .8), 29, section.Top - 8, (isVocabulary ? width : SurfaceWidth) - 29, section.Top - 8);
             switch (section.Kind)
             {
                 case WidgetSection.Clock:
@@ -119,33 +132,40 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                         weight: settings.TextWeight, alignment: TextAlignment.Right);
                     break;
                 case WidgetSection.Vocabulary:
-                    DrawVocabulary(d, section);
+                    DrawVocabulary(d, section, width, target.VocabularyColumns);
                     break;
                 case WidgetSection.Todo:
                     break;
             }
+            d.Pop();
             if (transitioning) { d.Pop(); d.Pop(); }
         }
         if ((settings.ShowTodo || settings.ShowVocabulary) && FooterReveal > 0) {
-            d.PushOpacity(FooterReveal); Art.Line(d, Art.Pen(line, .7), 31, layout.Height - 12, 325, layout.Height - 12); d.Pop();
+            d.PushOpacity(FooterReveal); Art.Line(d, Art.Pen(line, .7), 31 + inset, layout.Height - 12, 325 + inset, layout.Height - 12); d.Pop();
         }
         d.Pop();
     }
-    private void DrawVocabulary(DrawingContext drawing, SectionLayout section)
+    private static double VocabularyColumnWidth(double width, int columns) =>
+        (width - 2 * WidgetLayout.VocabularyInset - (columns - 1) * WidgetLayout.VocabularyColumnGap) / columns;
+
+    private void DrawVocabulary(DrawingContext drawing, SectionLayout section, double width, int columns)
     {
         double rowHeight = WidgetLayout.VocabularyRowHeight(settings);
         double offset = VocabularyOffset;
         int first = (int)Math.Floor(offset);
-        int end = Math.Min(vocabulary.Order.Count, (int)Math.Ceiling(offset + section.Height / rowHeight));
-        drawing.PushClip(new RectangleGeometry(new Rect(0, section.Top, SurfaceWidth, section.Height)));
-        for (int row = first; row < end; row++)
+        int end = Math.Min(vocabulary.Order.Count, (int)Math.Ceiling(offset + section.Height / rowHeight) * columns);
+        double columnWidth = VocabularyColumnWidth(width, columns);
+        double stride = columnWidth + WidgetLayout.VocabularyColumnGap;
+        drawing.PushClip(new RectangleGeometry(new Rect(0, section.Top, width, section.Height)));
+        for (int i = first * columns; i < end; i++)
         {
-            var entry = vocabulary.Order[row];
-            double y = section.Top + (row - offset) * rowHeight;
-            Text(drawing, entry.Word, 31, y + 3, 22, foreground, Dpi, medium: true, width: 294);
+            var entry = vocabulary.Order[i];
+            double x = WidgetLayout.VocabularyInset + i % columns * stride;
+            double y = section.Top + (i / columns - offset) * rowHeight;
+            Text(drawing, entry.Word, x, y + 3, 22, foreground, Dpi, medium: true, width: columnWidth);
             if (!settings.VocabularyHideMeaning)
-                Art.Text(drawing, entry.Meaning, 31, y + WidgetLayout.VocabularyMeaningTop, settings.VocabularyMeaningFontSize * settings.TextScale,
-                    secondary, Dpi, width: 294, weight: settings.TextWeight);
+                Art.Text(drawing, entry.Meaning, x, y + WidgetLayout.VocabularyMeaningTop, settings.VocabularyMeaningFontSize * settings.TextScale,
+                    secondary, Dpi, width: columnWidth, weight: settings.TextWeight);
         }
         drawing.Pop();
     }
@@ -184,7 +204,8 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
 
     private void ScrollVocabulary(int delta)
     {
-        vocabulary.Scroll(settings, delta, VocabularyOffset, DateTimeOffset.Now);
+        var target = TargetLayout;
+        vocabulary.Scroll(settings, delta, VocabularyOffset, DateTimeOffset.Now, target.VocabularyRowLimit, target.VocabularyColumns);
         if (vocabulary.Offset != vocabularyScrollTarget) HoverHints.Close(this);
         SyncVocabularyOffset();
     }
@@ -424,11 +445,11 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             else tip = "打开设置查看外设检测";
             if (devices.Count > 2) tip += "\n滚轮切换设备";
         }
-        if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip + (settings.PanelLocked ? "" : "\n单击查看历史曲线");
+        if (area?.Kind == WidgetSection.Metrics && Metrics.Length > 0) tip = Metrics[Math.Clamp((int)((p.X - SectionInset - 30) / (300.0 / Metrics.Length)), 0, Metrics.Length - 1)].Tip + (settings.PanelLocked ? "" : "\n单击查看历史曲线");
         if (area?.Kind == WidgetSection.GpuMemory)
         {
             var gpu = state.GpuMemory;
-            var metric = GpuMetricAt(p.X);
+            var metric = GpuMetricAt(p.X - SectionInset);
             if (metric == HardwareMetric.VramTemperature)
                 tip = gpu?.VramCelsius is { } temp ? $"显存温度 {temp:0.#} °C\n{gpu.VramTemperatureSource}" : "显卡或驱动暂未提供显存温度读数";
             else
@@ -446,8 +467,15 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
         if (area?.Kind == WidgetSection.Vocabulary) {
             var row = (int)Math.Floor(VocabularyOffset + (p.Y - area.Top) / WidgetLayout.VocabularyRowHeight(settings));
-            if (p.Y < area.Top + area.Height && Math.Abs(VocabularyOffset - vocabularyScrollTarget) < .01 && row >= 0 && row < vocabulary.Order.Count) {
-                var word = vocabulary.Order[row];
+            var columnWidth = VocabularyColumnWidth(Width, drawnVocabularyColumns);
+            var stride = columnWidth + WidgetLayout.VocabularyColumnGap;
+            var x = p.X - WidgetLayout.VocabularyInset;
+            var column = (int)Math.Floor(x / stride);
+            var index = row * drawnVocabularyColumns + column;
+            if (TransitionLayout is null && Math.Abs(VocabularyOffset - vocabularyScrollTarget) < .01 &&
+                row >= 0 && column >= 0 && column < drawnVocabularyColumns && x - column * stride < columnWidth &&
+                index < vocabulary.Order.Count) {
+                var word = vocabulary.Order[index];
                 tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮滚动单词";
             }
         }

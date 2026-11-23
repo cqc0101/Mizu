@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,6 +24,9 @@ public sealed class SettingsWindow : Window
     private readonly StackPanel deviceList = new();
     private readonly StackPanel todoList = new();
     private readonly StackPanel vocabularyList = new();
+    private Slider? vocabularyRowsSlider;
+    private TextBlock? vocabularyCapacity;
+    private bool syncingVocabularyRows;
     private readonly ListBox sectionOrderList = new() { AllowDrop = true, BorderThickness = new(0), Background = Brushes.Transparent };
     private Point sectionDragStart;
     private ComboBox? themeSelector;
@@ -118,7 +122,8 @@ public sealed class SettingsWindow : Window
         if (title is "每日诗词" or "开启每日诗词") poetryVisibilityToggles.Add(check);
         check.Checked += (_, _) => Set(true); check.Unchecked += (_, _) => Set(false); return check;
     }
-    private UIElement SliderRow(string title, double value, double min, double max, double step, string format, Action<double> apply, bool continuous = false)
+    private UIElement SliderRow(string title, double value, double min, double max, double step, string format, Action<double> apply,
+        bool continuous = false, Action<Slider>? configure = null)
     {
         var grid = new Grid { Margin = new(0, 8, 0, 15) }; grid.ColumnDefinitions.Add(new() { Width = new(112) }); grid.ColumnDefinitions.Add(new()); grid.ColumnDefinitions.Add(new() { Width = new(58) });
         var label = Label(title); label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new(0); grid.Children.Add(label);
@@ -131,7 +136,9 @@ public sealed class SettingsWindow : Window
         {
             number.Text = e.NewValue.ToString(format); adjustingSlider = true;
             try { apply(e.NewValue); } finally { adjustingSlider = false; }
-        }; return grid;
+        };
+        configure?.Invoke(slider);
+        return grid;
     }
     private void FlushPendingSave() { saveDelay.Stop(); if (pendingSave) { pendingSave = false; widget.SaveSettings(); } }
     private void Save(bool scaleOnly = false)
@@ -147,6 +154,7 @@ public sealed class SettingsWindow : Window
     {
         theme.Apply(settings.Theme);
         if (themeSelector is not null) themeSelector.SelectedIndex = Array.FindIndex(ThemePalette.All, p => p.Id == settings.Theme);
+        RefreshVocabularyCapacity();
     }
     private UIElement Appearance()
     {
@@ -420,15 +428,30 @@ public sealed class SettingsWindow : Window
     {
         var panel = new StackPanel { Margin = new(1, 4, 12, 0) };
         panel.Children.Add(Toggle("在组件上显示单词本", settings.ShowVocabulary, v => { settings.ShowVocabulary = v; Save(); }));
-        panel.Children.Add(SliderRow("显示组数", settings.VocabularyVisibleRows, 1, 12, 1, "0' 组'", v => { settings.VocabularyVisibleRows = (int)v; Save(); }));
+        var layout = widget.Surface.TargetLayout;
+        panel.Children.Add(SliderRow("显示列数", settings.VocabularyColumns, 1, WidgetLayout.MaximumVocabularyColumns, 1,
+            "0' 列'", v => { settings.VocabularyColumns = (int)v; Save(); }));
+        panel.Children.Add(SliderRow("显示行数", Math.Min(settings.VocabularyVisibleRows, layout.VocabularyRowLimit), 1,
+            layout.VocabularyRowLimit, 1, "0' 行'", v =>
+            {
+                if (syncingVocabularyRows) return;
+                settings.VocabularyVisibleRows = (int)v;
+                Save();
+            }, configure: slider => vocabularyRowsSlider = slider));
+        vocabularyCapacity = Label("", true);
+        panel.Children.Add(vocabularyCapacity);
+        RefreshVocabularyCapacity();
         panel.Children.Add(SliderRow("单词间距", settings.VocabularySpacing, 0, 40, 1, "0' px'", v => { settings.VocabularySpacing = (int)v; Save(); }));
         panel.Children.Add(SliderRow("中文释义字号", settings.VocabularyMeaningFontSize, AppSettings.MinimumVocabularyMeaningFontSize,
             AppSettings.MaximumVocabularyMeaningFontSize, 1, "0", v => { settings.VocabularyMeaningFontSize = (int)v; Save(); }));
         panel.Children.Add(Toggle("随机轮换（关闭则按录入顺序）", settings.VocabularyRandom, v => { settings.VocabularyRandom = v; Save(); }));
         panel.Children.Add(SliderRow("轮换间隔", settings.VocabularyMinutes, 1, 720, 1, "0' 分钟'", v => { settings.VocabularyIntervalMinutes = (int)v; Save(); }));
         panel.Children.Add(Toggle("隐藏中文释义（包括悬停提示）", settings.VocabularyHideMeaning, v => { settings.VocabularyHideMeaning = v; Save(); }));
-        panel.Children.Add(Label("显示 1–12 组，按设置自动轮换，也可在单词区域滚轮切换；空词本不占空间。悬停组件可直接添加单词。", true));
-        panel.Children.Add(ActionButton("导入单词本", (_, _) => ImportVocabulary()));
+        panel.Children.Add(Label("关闭其他模块可腾出更多行。多列会加宽组件，屏幕空间不足时会临时减少行数或列数。悬停组件可添加单词，也可以在词条区用滚轮逐行滚动。", true));
+        var fileActions = new WrapPanel();
+        fileActions.Children.Add(ActionButton("导入单词本", (_, _) => ImportVocabulary()));
+        fileActions.Children.Add(ActionButton("导出单词本", (_, _) => ExportVocabulary()));
+        panel.Children.Add(fileActions);
         panel.Children.Add(Label("CSV：单词,释义（含逗号的释义用双引号包围）；TSV / TXT：单词与释义用 Tab 分隔，也可每行只有单词。JSON：[{\"Word\":\"serene\",\"Meaning\":\"宁静的\"}]。文本建议 UTF-8，文件最多 4 MB。导入会跳过重复词，保留已有释义。", true));
         TextBox Input(string name, int limit) {
             var input = new TextBox { Padding = new(10), MaxLength = limit, Margin = new(0, 0, 0, 8), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
@@ -444,6 +467,23 @@ public sealed class SettingsWindow : Window
         meaning.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Add(); e.Handled = true; } };
         panel.Children.Add(Label("下方可编辑单词与释义，移开焦点自动保存；关闭显示不会删除词条。数据仅保存在本机。", true));
         panel.Children.Add(vocabularyList); BuildVocabularyList(); return panel;
+    }
+    private void RefreshVocabularyCapacity()
+    {
+        if (vocabularyRowsSlider is null || vocabularyCapacity is null) return;
+        var layout = widget.Surface.TargetLayout;
+        syncingVocabularyRows = true;
+        try
+        {
+            vocabularyRowsSlider.Maximum = layout.VocabularyRowLimit;
+            vocabularyRowsSlider.Value = Math.Min(settings.VocabularyVisibleRows, layout.VocabularyRowLimit);
+        }
+        finally { syncingVocabularyRows = false; }
+        int columns = layout.VocabularyColumns;
+        int perScreen = Math.Min(settings.Vocabulary.Count, layout.VocabularyRows * columns);
+        vocabularyCapacity.Text = $"当前上限 {layout.VocabularyRowLimit} 行 × {columns} 列 · {layout.VocabularyRowLimit * columns} 个词条\n每屏最多显示 {perScreen} 个";
+        if (settings.VocabularyVisibleRows > layout.VocabularyRowLimit || settings.VocabularyColumns > columns)
+            vocabularyCapacity.Text += $" · 已选 {settings.VocabularyVisibleRows} 行 × {settings.VocabularyColumns} 列";
     }
     private void ImportVocabulary()
     {
@@ -477,9 +517,45 @@ public sealed class SettingsWindow : Window
             };
             meaning.LostKeyboardFocus += (_, _) => { entry.Meaning = meaning.Text.Trim(); Save(); };
             fields.Children.Add(word); fields.Children.Add(meaning); row.Children.Add(fields);
-            var delete = ActionButton("×", (_, _) => { settings.Vocabulary.Remove(entry); Save(); BuildVocabularyList(); });
+            var delete = ActionButton("", (_, _) =>
+            {
+                settings.Vocabulary.Remove(entry);
+                Save();
+                BuildVocabularyList();
+            });
+            delete.Content = new IconView("trash", theme.Brush("#4A5945"), 1.3) { Width = 16, Height = 16 };
+            delete.Width = delete.Height = 32;
+            delete.Padding = new(0);
+            delete.Margin = new(8, 0, 0, 0);
+            delete.HorizontalAlignment = HorizontalAlignment.Left;
+            delete.VerticalAlignment = VerticalAlignment.Center;
             HoverHints.Set(delete, "删除单词"); System.Windows.Automation.AutomationProperties.SetName(delete, "删除单词");
             Grid.SetColumn(delete, 1); row.Children.Add(delete); vocabularyList.Children.Add(row);
+        }
+    }
+    private void ExportVocabulary()
+    {
+        if (settings.Vocabulary.Count == 0)
+        {
+            status.Text = "单词本为空";
+            return;
+        }
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出单词本", FileName = "Mizu-单词本", DefaultExt = ".csv",
+            Filter = "CSV 文件 (*.csv)|*.csv|JSON 文件 (*.json)|*.json"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            string extension = Path.GetExtension(dialog.FileName);
+            string content = VocabularyExport.Serialize(settings.Vocabulary, extension);
+            File.WriteAllText(dialog.FileName, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: extension.Equals(".csv", StringComparison.OrdinalIgnoreCase)));
+            status.Text = $"已导出 {settings.Vocabulary.Count} 个单词";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
+        {
+            status.Text = "导出失败：" + ex.Message;
         }
     }
     private UIElement Todos()

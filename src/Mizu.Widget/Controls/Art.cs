@@ -38,6 +38,9 @@ public static class Art
                 for (int i = 0; i < 8; i++) { var a = i * Math.PI / 4; L(12 + 8 * Math.Cos(a), 12 + 8 * Math.Sin(a), 12 + 10 * Math.Cos(a), 12 + 10 * Math.Sin(a)); }
                 d.DrawEllipse(null, p, new(12, 12), 8, 8); break;
             case "close": L(6, 6, 18, 18); L(18, 6, 6, 18); break;
+            case "trash":
+                d.DrawGeometry(null, p, Geometry.Parse("M 3,6 L 21,6 M 9,6 L 9,3 15,3 15,6 M 5,6 L 6.2,20 Q 6.3,21 7.5,21 L 16.5,21 Q 17.7,21 17.8,20 L 19,6 M 10,10 L 10.4,17 M 14,10 L 13.6,17"));
+                break;
             case "refresh":
                 d.DrawGeometry(null, p, Geometry.Parse("M 19,8 A 8,8 0 1 0 19,17 M 19,3 L 19,8 14,8")); break;
             case "pin": d.DrawGeometry(null, p, Geometry.Parse("M 8,3 L 16,3 M 9,3 L 9,10 6,14 18,14 15,10 15,3 M 12,14 L 12,22")); break;
