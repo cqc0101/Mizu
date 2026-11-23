@@ -84,6 +84,8 @@ public sealed class AppSettings
     public bool PushEnabled { get; set; }
     public string? ProtectedPushToken { get; set; }
     public string? ProtectedFirebaseSync { get; set; }
+    public bool AutoCloudBackup { get; set; }
+    public int CloudBackupIntervalMinutes { get; set; } = 60;
     public int BatteryThreshold { get; set; } = 20;
     public double CpuThreshold { get; set; } = 90;
     public double MemoryThreshold { get; set; } = 90;
@@ -122,6 +124,7 @@ public sealed class AppSettings
             var meaning = (entry.Meaning ?? "").Trim(); entry.Meaning = meaning[..Math.Min(meaning.Length, 200)];
         }
         WeatherCacheHours = Math.Clamp(WeatherCacheHours, 1, 72);
+        CloudBackupIntervalMinutes = Math.Clamp(CloudBackupIntervalMinutes, 1, 720);
         ForecastHours = Math.Clamp(ForecastHours, 1, 12); HourStep = Math.Clamp(HourStep, 1, 6);
         ForecastDays = Math.Clamp(ForecastDays, 1, 7); TodoVisibleRows = Math.Clamp(TodoVisibleRows, 1, 8);
         Todos = (Todos ?? []).Where(t => t is not null && !string.IsNullOrWhiteSpace(t.Text)).Take(200).ToList();
@@ -173,6 +176,35 @@ public sealed class SettingsStore
         var temp = FilePath + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
         File.Move(temp, FilePath, true);
+    }
+    public void SaveSyncState(AppSettings settings, FirebaseConnection? connection, SyncSnapshot? restored = null,
+        string? backupPath = null, bool pauseAutomaticBackup = false)
+    {
+        string? previousConnection = settings.ProtectedFirebaseSync;
+        bool previousAutomaticBackup = settings.AutoCloudBackup;
+        string? nextConnection = connection?.Protect();
+        var previousData = restored is null ? null : SyncSnapshot.Capture(settings);
+        if (previousData is not null)
+        {
+            string path = backupPath ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(FilePath))!, "mizu-sync-backup.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+            File.WriteAllBytes(path + ".tmp", previousData.Encode());
+            File.Move(path + ".tmp", path, true);
+        }
+        try
+        {
+            restored?.ApplyTo(settings);
+            settings.ProtectedFirebaseSync = nextConnection;
+            if (pauseAutomaticBackup) settings.AutoCloudBackup = false;
+            Save(settings);
+        }
+        catch
+        {
+            previousData?.ApplyTo(settings);
+            settings.ProtectedFirebaseSync = previousConnection;
+            settings.AutoCloudBackup = previousAutomaticBackup;
+            throw;
+        }
     }
     public static string? Protect(string token) => string.IsNullOrWhiteSpace(token) ? null :
         Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(token.Trim()), null, DataProtectionScope.CurrentUser));

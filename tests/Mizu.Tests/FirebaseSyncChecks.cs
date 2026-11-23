@@ -55,12 +55,23 @@ internal static class FirebaseSyncChecks
         Check(SyncSnapshot.Capture(destination).Encode().SequenceEqual(data), "A valid snapshot has a stable hash after application");
         Reject<JsonException>(() => SyncSnapshot.Decode("{}"u8), "Incomplete snapshots must be rejected");
         Reject<InvalidDataException>(() => (snapshot with { Display = snapshot.Display with { WordColumns = 99 } }).Encode(), "Invalid layout values must be rejected");
-        Check(SyncSnapshot.Choose("a", null, null) == SyncAction.Upload &&
-            SyncSnapshot.Choose("a", "a", null) == SyncAction.AlreadyCurrent, "A first sync creates or recognizes the cloud document");
-        Check(SyncSnapshot.Choose("b", "a", "a") == SyncAction.Upload &&
-            SyncSnapshot.Choose("a", "b", "a") == SyncAction.Download, "Single-side edits determine the sync direction");
-        Check(SyncSnapshot.Choose("b", "c", "a") == SyncAction.Conflict &&
-            SyncSnapshot.Choose("b", "c", null) == SyncAction.Conflict, "Divergent data needs an explicit choice");
+        Check(SyncSnapshot.DecideUpload("a", null, null) == CloudUploadDecision.Upload &&
+            SyncSnapshot.DecideUpload("a", "a", null) == CloudUploadDecision.AlreadyCurrent, "First backup creates or recognizes the cloud document");
+        Check(SyncSnapshot.DecideUpload("b", "a", "a") == CloudUploadDecision.Upload &&
+            SyncSnapshot.DecideUpload("a", "b", "a") == CloudUploadDecision.CloudChanged, "Only the already recognized cloud version can be replaced automatically");
+        Check(SyncSnapshot.DecideUpload("b", "c", "a") == CloudUploadDecision.CloudChanged &&
+            SyncSnapshot.DecideUpload("b", "c", null) == CloudUploadDecision.CloudChanged, "An unknown cloud backup is protected");
+        var wordsOnly = snapshot.ClearLocalData(words: true, todos: false, display: false);
+        Check(wordsOnly.Words.Length == 0 && wordsOnly.Todos.SequenceEqual(snapshot.Todos) &&
+            wordsOnly.Appearance == snapshot.Appearance, "Cleaning vocabulary leaves todos and preferences alone");
+        var restOnly = snapshot.ClearLocalData(words: false, todos: true, display: true);
+        Check(restOnly.Words.SequenceEqual(snapshot.Words) && restOnly.Todos.Length == 0 &&
+            restOnly.Appearance.Theme == "light", "Selected display preferences reset without cleaning the word book");
+        var oldSettings = JsonSerializer.Deserialize<AppSettings>("{}")!;
+        Check(!oldSettings.AutoCloudBackup && oldSettings.CloudBackupIntervalMinutes == 60, "Existing users start with automatic backup disabled");
+        oldSettings.CloudBackupIntervalMinutes = 9999;
+        oldSettings.Validate();
+        Check(oldSettings.CloudBackupIntervalMinutes == 720, "Automatic backup interval is bounded");
 
         string Token(string audience) => "header." + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -114,6 +125,38 @@ internal static class FirebaseSyncChecks
         Check(access.Connection.RefreshToken == "renewed-token", "Refreshed credentials remain usable");
         var cloud = await client.DownloadAsync(access, default);
         Check(cloud?.Revision == revision && cloud.Snapshot.Encode().SequenceEqual(data), "Cloud document preserves synced content");
+        string folder = Path.Combine(Path.GetTempPath(), "Mizu-backup-check-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var store = new SettingsStore(Path.Combine(folder, "settings.json"));
+            var setup = new AppSettings { AutoCloudBackup = true, Left = 45, ProtectedPushToken = "local-only" };
+            decoded.ApplyTo(setup);
+            setup.Vocabulary.Add(new() { Word = "only-local" });
+            var cleanupBackup = Path.Combine(folder, "mizu-cleanup-backup.json");
+            var localData = SyncSnapshot.Capture(setup);
+            var reset = localData.ClearLocalData(words: true, todos: true, display: true);
+            store.SaveSyncState(setup, session, reset, cleanupBackup, pauseAutomaticBackup: true);
+            var reloaded = store.Load();
+            Check(!reloaded.AutoCloudBackup && reloaded.Vocabulary.Count == 0 && reloaded.Todos.Count == 0 &&
+                reloaded.Theme == "light" && FirebaseConnection.Restore(reloaded.ProtectedFirebaseSync) == session,
+                "Cleanup persists the selected changes, retains login and pauses automatic upload");
+            Check(SyncSnapshot.Decode(File.ReadAllBytes(cleanupBackup)).Encode().SequenceEqual(localData.Encode()),
+                "Cleanup preserves the data present before clearing");
+            store.SaveSyncState(reloaded, session, cloud!.Snapshot);
+            reloaded = store.Load();
+            Check(reloaded.Theme == "navy" && reloaded.Vocabulary.Single().Meaning == "宁静" &&
+                reloaded.Todos.Single().Completed && reloaded.Left == 45 && reloaded.ProtectedPushToken == "local-only",
+                "The downloaded cloud backup restores words, todo completion and display without changing local-only settings");
+            Check(SyncSnapshot.Decode(File.ReadAllBytes(cleanupBackup)).Words.Any(word => word.Word == "only-local") &&
+                SyncSnapshot.Decode(File.ReadAllBytes(Path.Combine(folder, "mizu-sync-backup.json"))).Words.Length == 0,
+                "Cloud restore keeps a separate undo copy without replacing the pre-cleanup copy");
+        }
+        finally
+        {
+            foreach (var file in Directory.EnumerateFiles(folder)) File.Delete(file);
+            Directory.Delete(folder);
+        }
         await client.UploadAsync(access, data, null, default);
         bool stopped = false;
         try { await client.UploadAsync(access, data, revision, default); }

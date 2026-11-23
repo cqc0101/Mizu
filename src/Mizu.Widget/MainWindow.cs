@@ -22,6 +22,7 @@ public sealed class MainWindow : Window
     public WidgetSurface Surface { get; }
     public WidgetEngine Engine { get; }
     public UpdateCoordinator Updates { get; }
+    internal CloudBackupCoordinator Backups { get; }
     private readonly SettingsStore store;
     private readonly System.Windows.Forms.NotifyIcon tray;
     private readonly StackPanel toolbar;
@@ -97,6 +98,7 @@ public sealed class MainWindow : Window
         var stage = new Canvas(); stage.Children.Add(layout); Content = stage;
         Engine = new(settings, State, OnStateChanged);
         Updates = new(this, !preview && persistSettings);
+        Backups = new(this);
         tray = new() { Text = "Mizu", Icon = AppIcons.CreateTrayIcon(), Visible = !preview };
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("显示 / 收起", null, (_, _) => ToggleVisible());
@@ -123,6 +125,7 @@ public sealed class MainWindow : Window
             if (!preview) Engine.Start();
             if (!preview) displayTimer.Start();
             Updates.Start();
+            Backups.Start();
         };
         LocationChanged += (_, _) => QueueWorkAreaRefresh();
         DpiChanged += (_, _) => QueueWorkAreaRefresh();
@@ -636,32 +639,13 @@ public sealed class MainWindow : Window
     }
     internal bool SyncAvailable => persistSettings && !Surface.PreviewMaterial;
     internal static string SyncBackupPath => Path.Combine(SettingsStore.DataDirectory, "mizu-sync-backup.json");
+    internal static string CleanupBackupPath => Path.Combine(SettingsStore.DataDirectory, "mizu-cleanup-backup.json");
 
-    internal void SaveFirebaseSync(FirebaseConnection? connection, SyncSnapshot? downloaded = null)
+    internal void SaveFirebaseSync(FirebaseConnection? connection, SyncSnapshot? downloaded = null,
+        string? localBackupPath = null, bool pauseAutomaticBackup = false)
     {
         if (!SyncAvailable) throw new InvalidOperationException("预览模式不保存同步设置。");
-        string? previousConnection = Settings.ProtectedFirebaseSync;
-        string? nextConnection = connection?.Protect();
-        var previousData = downloaded is null ? null : SyncSnapshot.Capture(Settings);
-        if (previousData is not null)
-        {
-            var backup = previousData.Encode();
-            Directory.CreateDirectory(SettingsStore.DataDirectory);
-            File.WriteAllBytes(SyncBackupPath + ".tmp", backup);
-            File.Move(SyncBackupPath + ".tmp", SyncBackupPath, true);
-        }
-        try
-        {
-            downloaded?.ApplyTo(Settings);
-            Settings.ProtectedFirebaseSync = nextConnection;
-            store.Save(Settings);
-        }
-        catch
-        {
-            previousData?.ApplyTo(Settings);
-            Settings.ProtectedFirebaseSync = previousConnection;
-            throw;
-        }
+        store.SaveSyncState(Settings, connection, downloaded, localBackupPath, pauseAutomaticBackup);
         if (downloaded is not null) ApplySettings();
     }
 
@@ -705,6 +689,7 @@ public sealed class MainWindow : Window
     {
         if (disposed) return; disposed = true; quitting = true;
         Updates.Dispose();
+        Backups.Dispose();
         settingsWindow?.Close(); historyWindow?.Close(); SaveSettings();
         tray.Visible = false; var trayIcon = tray.Icon; tray.Dispose(); trayIcon?.Dispose();
         NativeWindow.UnregisterHotKey(new WindowInteropHelper(this).Handle, 0x4d5a);

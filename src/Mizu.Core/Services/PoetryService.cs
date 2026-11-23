@@ -69,6 +69,19 @@ public sealed class PoetryService(HttpMessageHandler? handler = null, string? ca
         } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { AppLog.Write("poetry.cache", ex.GetType().Name); return null; }
     }
     public PoetrySnapshot? Load() => new[] { ReadCache(file), ReadCache(file + ".local") }.Where(p => p is not null).OrderByDescending(p => p!.FetchedAt).FirstOrDefault();
+    public void ClearCache()
+    {
+        try
+        {
+            foreach (var path in new[] { file, file + ".local", TokenFile })
+            {
+                File.Delete(path);
+                File.Delete(path + ".tmp");
+            }
+        }
+        catch (DirectoryNotFoundException) { }
+        accessToken = null;
+    }
     public void Save(PoetrySnapshot poem)
     {
         var path = poem.Source == "内置公版诗库" ? file + ".local" : file;

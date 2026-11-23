@@ -1,6 +1,3 @@
-using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -10,15 +7,13 @@ namespace Mizu.Widget;
 
 public sealed partial class SettingsWindow
 {
-    private readonly FirebaseSyncClient firebase = new();
-    private FirebaseConnection? firebaseConnection;
     private TextBlock? syncStatus;
 
     private UIElement FirebaseSyncTab()
     {
         var root = new StackPanel { Margin = new(1, 4, 12, 0) };
-        root.Children.Add(Label("使用自己的 Firebase 项目"));
-        root.Children.Add(Label("手动同步待办、单词本和显示偏好。项目、账号与写入权限由你管理。", true));
+        root.Children.Add(Label("云端备份"));
+        root.Children.Add(Label("备份待办、单词本和显示偏好。使用自己的 Firebase 项目和账号。", true));
         syncStatus = Label("", true);
         root.Children.Add(syncStatus);
         if (!widget.SyncAvailable)
@@ -27,7 +22,7 @@ public sealed partial class SettingsWindow
             return root;
         }
 
-        firebaseConnection = FirebaseConnection.Restore(settings.ProtectedFirebaseSync);
+        var backups = widget.Backups;
         var signInPanel = new StackPanel();
         var signedInPanel = new StackPanel();
         root.Children.Add(signInPanel);
@@ -95,49 +90,52 @@ public sealed partial class SettingsWindow
         signedInPanel.Children.Add(account);
         var actions = new WrapPanel();
         signedInPanel.Children.Add(actions);
-        var recovery = new StackPanel();
-        var restore = ActionButton("恢复上次下载前的本机数据", (_, _) => RestoreSyncBackup());
-        recovery.Children.Add(restore);
-        root.Children.Add(recovery);
+        var schedule = Label("", true);
+        var autoBackup = Toggle("自动备份至云端", settings.AutoCloudBackup, enabled =>
+        {
+            if (settings.AutoCloudBackup == enabled) return;
+            settings.AutoCloudBackup = enabled;
+            widget.SaveSettings();
+            backups.Schedule();
+        });
+        signedInPanel.Children.Add(autoBackup);
+        signedInPanel.Children.Add(SliderRow("备份间隔", settings.CloudBackupIntervalMinutes, 1, 720, 1, "0' 分钟'", value =>
+        {
+            settings.CloudBackupIntervalMinutes = (int)value;
+            Save();
+            backups.Schedule();
+        }));
+        signedInPanel.Children.Add(schedule);
+
+        var cleanup = BuildLocalCleanup();
+        root.Children.Add(cleanup);
+        var localActions = new WrapPanel();
+        var undoDownload = ActionButton("恢复下载前的本机数据", async (_, _) => await RestoreLocalAsync(MainWindow.SyncBackupPath));
+        var undoCleanup = ActionButton("恢复清理前的本机数据", async (_, _) => await RestoreLocalAsync(MainWindow.CleanupBackupPath));
+        localActions.Children.Add(undoDownload);
+        localActions.Children.Add(undoCleanup);
+        root.Children.Add(localActions);
+
         void Refresh()
         {
-            bool connected = firebaseConnection is not null;
+            root.IsEnabled = !backups.Busy;
+            syncStatus.Text = backups.Message;
+            autoBackup.IsChecked = settings.AutoCloudBackup;
+            bool connected = backups.Connection is not null;
             signInPanel.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
             signedInPanel.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
-            account.Text = firebaseConnection is { } session
+            account.Text = backups.Connection is { } session
                 ? $"项目 {session.Config.ProjectId}\n账号 {session.Email}\n" +
-                  (session.LastSyncAt is { } at ? $"上次同步 {at.ToLocalTime():yyyy-MM-dd HH:mm}" : "尚未同步")
+                  (session.LastSyncAt is { } at ? $"上次确认云端版本 {at.ToLocalTime():yyyy-MM-dd HH:mm}" : "尚未备份")
                 : "";
-            restore.Visibility = File.Exists(MainWindow.SyncBackupPath) ? Visibility.Visible : Visibility.Collapsed;
+            schedule.Text = backups.NextBackupAt is { } next
+                ? $"Mizu 运行时自动上传。下次检查约在 {next.ToLocalTime():MM-dd HH:mm}。"
+                : "仅在 Mizu 运行时自动检查，恢复云端数据始终由你手动发起。";
+            undoDownload.Visibility = File.Exists(MainWindow.SyncBackupPath) ? Visibility.Visible : Visibility.Collapsed;
+            undoCleanup.Visibility = File.Exists(MainWindow.CleanupBackupPath) ? Visibility.Visible : Visibility.Collapsed;
         }
-        async Task Run(string progress, Func<CancellationToken, Task> operation)
-        {
-            if (!root.IsEnabled) return;
-            root.IsEnabled = false;
-            syncStatus.Text = progress;
-            var lifetimeToken = lifetime.Token;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetimeToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(55));
-            try { await operation(timeout.Token); }
-            catch (OperationCanceledException)
-            {
-                if (!lifetimeToken.IsCancellationRequested) syncStatus.Text = "同步请求超时，请重试。";
-            }
-            catch (Exception ex) when (ex is FormatException or InvalidDataException)
-            {
-                syncStatus.Text = ex is InvalidDataException ? ex.Message : "数据格式无效，请检查配置后重试。";
-            }
-            catch (Exception ex) when (ex is HttpRequestException or JsonException)
-            {
-                syncStatus.Text = "Firebase 响应异常，请检查网络和项目设置后重试。";
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
-            {
-                syncStatus.Text = ex is FirebaseRequestException
-                    ? ex.Message : "无法保存同步数据，请检查本机存储权限和可用空间。";
-            }
-            finally { if (!lifetimeToken.IsCancellationRequested) { root.IsEnabled = true; Refresh(); } }
-        }
+        backups.Changed += Refresh;
+        Closed += (_, _) => backups.Changed -= Refresh;
 
         signInPanel.Children.Add(ActionButton("登录 Firebase", async (_, _) =>
         {
@@ -150,95 +148,85 @@ public sealed partial class SettingsWindow
                     throw new FormatException("请填写 Firebase Auth 邮箱和密码。");
             }
             catch (FormatException ex) { syncStatus.Text = ex.Message; return; }
-            await Run("正在登录 Firebase…", async token =>
-            {
-                var login = firebase.SignInAsync(imported, email.Text, password.Password, token);
-                password.Clear();
-                var session = await login;
-                token.ThrowIfCancellationRequested();
-                widget.SaveFirebaseSync(session);
-                firebaseConnection = session;
-                selectedConfig = null; config.Clear(); email.Clear();
-                configSummary.Text = "可以粘贴网页应用的 Firebase 配置，也可以选择 TXT、JSON 或 JS 文件。";
-                syncStatus.Text = "登录成功。点击「立即同步」连接 Firestore。";
-            });
+            var login = backups.SignInAsync(imported, email.Text, password.Password, lifetime.Token);
+            password.Clear();
+            if (!await login) return;
+            selectedConfig = null; config.Clear(); email.Clear();
+            configSummary.Text = "可以粘贴网页应用的 Firebase 配置，也可以选择 TXT、JSON 或 JS 文件。";
         }));
-        actions.Children.Add(ActionButton("立即同步", async (_, _) => await Run("正在检查云端版本…", SyncNowAsync)));
-        actions.Children.Add(ActionButton("退出登录", async (_, _) => await Run("正在退出…", _ =>
+        actions.Children.Add(ActionButton("上传备份至云端", async (_, _) =>
         {
-            widget.SaveFirebaseSync(null);
-            firebaseConnection = null;
-            syncStatus.Text = "已退出。云端数据保留。";
-            return Task.CompletedTask;
-        })));
+            FlushPendingSave();
+            await backups.UploadAsync(false, cloud =>
+                ConfirmCloud(cloud, "覆盖云端备份", "云端有不同版本。要用当前本机数据更新云端备份吗？"), lifetime.Token);
+        }));
+        actions.Children.Add(ActionButton("恢复云端备份", async (_, _) =>
+        {
+            FlushPendingSave();
+            var token = lifetime.Token;
+            if (await backups.RestoreCloudAsync(cloud =>
+                ConfirmCloud(cloud, "恢复云端备份", "云端内容将替换本机的单词本、待办和显示设置。本机当前数据会另存备份。"), token)
+                && !token.IsCancellationRequested)
+                ReloadSyncPage(backups.Message);
+        }));
+        actions.Children.Add(ActionButton("退出登录", async (_, _) => await backups.SignOutAsync(lifetime.Token)));
         Refresh();
-        if (settings.ProtectedFirebaseSync is not null && firebaseConnection is null)
-            syncStatus.Text = "本机无法读取已保存的登录，请重新登录。";
         return root;
     }
 
-    private async Task SyncNowAsync(CancellationToken token)
+    private bool ConfirmCloud(FirestoreSnapshot cloud, string title, string detail)
     {
-        if (firebaseConnection is not { } login) return;
-        FlushPendingSave();
-        var access = await firebase.RefreshAsync(login, token);
-        token.ThrowIfCancellationRequested();
-        if (access.Connection.RefreshToken != login.RefreshToken)
-        {
-            widget.SaveFirebaseSync(access.Connection);
-            firebaseConnection = access.Connection;
-        }
-        var cloud = await firebase.DownloadAsync(access, token);
-        token.ThrowIfCancellationRequested();
-        var local = SyncSnapshot.Capture(settings);
-        var localBytes = local.Encode();
-        string localHash = SyncSnapshot.Hash(localBytes);
-        string? cloudHash = cloud is null ? null : SyncSnapshot.Hash(cloud.Snapshot.Encode());
-        var action = SyncSnapshot.Choose(localHash, cloudHash, login.LastSyncHash);
-        if (action == SyncAction.Conflict)
-        {
-            var choice = System.Windows.MessageBox.Show(this,
-                $"本机与云端都有独立版本。\n\n本机 {local.Todos.Length} 项待办、{local.Words.Length} 个单词\n" +
-                $"云端 {cloud!.Snapshot.Todos.Length} 项待办、{cloud.Snapshot.Words.Length} 个单词\n\n" +
-                "是：用本机版本更新云端\n否：用云端版本更新本机，并保留本机备份\n取消：保留两边",
-                "选择同步版本", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
-            if (choice == MessageBoxResult.Cancel) { syncStatus!.Text = "已取消同步。"; return; }
-            token.ThrowIfCancellationRequested();
-            if (localHash != SyncSnapshot.Hash(SyncSnapshot.Capture(settings).Encode()))
-            { syncStatus!.Text = "本机数据在确认期间发生了变化，请重新同步。"; return; }
-            action = choice == MessageBoxResult.Yes ? SyncAction.Upload : SyncAction.Download;
-        }
-
-        if (action == SyncAction.Upload)
-        {
-            syncStatus!.Text = "正在上传到 Firestore…";
-            await firebase.UploadAsync(access, localBytes, cloud?.Revision, token);
-            token.ThrowIfCancellationRequested();
-        }
-        var next = access.Connection with
-        {
-            LastSyncHash = action == SyncAction.Download ? cloudHash : localHash,
-            LastSyncAt = DateTimeOffset.UtcNow
-        };
-        widget.SaveFirebaseSync(next, action == SyncAction.Download ? cloud!.Snapshot : null);
-        firebaseConnection = next;
-        if (action == SyncAction.Download) ReloadSyncPage("已下载云端版本。下载前的数据已在本机备份。");
-        else syncStatus!.Text = action == SyncAction.Upload ? "已将本机版本同步到 Firestore。" : "本机和云端已一致。";
+        string count = $"云端包含 {cloud.Snapshot.Words.Length} 个单词、{cloud.Snapshot.Todos.Length} 项待办。";
+        return System.Windows.MessageBox.Show(this, $"{count}\n\n{detail}", title,
+            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
     }
 
-    private void RestoreSyncBackup()
+    private UIElement BuildLocalCleanup()
     {
-        if (System.Windows.MessageBox.Show(this, "恢复上次下载前的待办、单词本与显示偏好？这会把当前版本留作本机备份。",
-            "恢复本机备份", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-        try
+        var panel = new StackPanel { Margin = new(0, 8, 0, 0) };
+        panel.Children.Add(Label("勾选想清空的项目。清理单词、待办或显示设置时会备份当前本机数据并暂停自动上传。", true));
+        var choices = new List<(LocalCleanup Flag, CheckBox Box)>();
+        var clear = ActionButton("清空所选内容", async (_, _) =>
         {
-            if (new FileInfo(MainWindow.SyncBackupPath).Length > SyncSnapshot.MaximumBytes) throw new InvalidDataException();
-            var snapshot = SyncSnapshot.Decode(File.ReadAllBytes(MainWindow.SyncBackupPath));
-            widget.SaveFirebaseSync(firebaseConnection, snapshot);
-            ReloadSyncPage("已恢复本机备份。");
+            var selection = choices.Where(choice => choice.Box.IsChecked == true).ToArray();
+            if (selection.Length == 0) return;
+            string names = string.Join("、", selection.Select(choice => choice.Box.Content as string));
+            FlushPendingSave();
+            var token = lifetime.Token;
+            var mask = selection.Aggregate(LocalCleanup.None, (flags, choice) => flags | choice.Flag);
+            if (await widget.Backups.CleanupAsync(mask, () =>
+                System.Windows.MessageBox.Show(this, $"确认清空所选内容？\n\n{names}",
+                    "清空本机内容", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes,
+                token) && !token.IsCancellationRequested)
+                ReloadSyncPage(widget.Backups.Message);
+        });
+        clear.IsEnabled = false;
+        void Item(LocalCleanup flag, string title)
+        {
+            var check = Toggle(title, false, value =>
+                clear.IsEnabled = value || choices.Any(choice => choice.Box.IsChecked == true));
+            choices.Add((flag, check));
+            panel.Children.Add(check);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or JsonException or InvalidDataException)
-        { syncStatus!.Text = "无法恢复本机备份。"; }
+        Item(LocalCleanup.Weather, "天气缓存");
+        Item(LocalCleanup.Poetry, "诗词缓存");
+        Item(LocalCleanup.Battery, "外设读数缓存");
+        Item(LocalCleanup.Vocabulary, "单词本");
+        Item(LocalCleanup.Todos, "待办清单数据");
+        Item(LocalCleanup.Display, "显示设置（云端可恢复）");
+        panel.Children.Add(clear);
+        return new Expander { Header = "清空本地缓存或数据", Content = panel, Margin = new(0, 12, 0, 8) };
+    }
+
+    private async Task RestoreLocalAsync(string path)
+    {
+        FlushPendingSave();
+        var token = lifetime.Token;
+        if (await widget.Backups.RestoreLocalAsync(path, () =>
+            System.Windows.MessageBox.Show(this, "恢复这份本机备份？当前内容会留作备份，自动上传将暂停。",
+                "恢复本机备份", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes,
+            token) && !token.IsCancellationRequested)
+            ReloadSyncPage(widget.Backups.Message);
     }
 
     private void ReloadSyncPage(string message)

@@ -65,6 +65,27 @@ public sealed class WidgetEngine(AppSettings settings, WidgetState state, Action
         if (state.WeatherCached) { state.Weather = null; state.WeatherCached = false; changed(); }
         Interlocked.Exchange(ref nextWeatherAttempt, 0);
     }
+    public async Task ClearWeatherFilesAsync(CancellationToken token)
+    {
+        await weather.WaitAsync(token);
+        try
+        {
+            weatherCache.DeleteFiles();
+            if (state.WeatherCached) { state.Weather = null; state.WeatherCached = false; changed(); }
+        }
+        finally { weather.Release(); }
+    }
+    public async Task ClearPoetryFilesAsync(CancellationToken token)
+    {
+        await poetryGate.WaitAsync(token);
+        try
+        {
+            poetry.ClearCache();
+            poetryLoaded = false;
+            state.Poetry = null; state.PoetryFailed = false; changed();
+        }
+        finally { poetryGate.Release(); }
+    }
     public void Start()
     {
         if (Interlocked.Exchange(ref started, 1) != 0) return;

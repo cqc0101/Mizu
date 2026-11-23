@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace Mizu.Core.Services;
 
-public enum SyncAction { AlreadyCurrent, Upload, Download, Conflict }
+public enum CloudUploadDecision { AlreadyCurrent, Upload, CloudChanged }
 
 public sealed record SyncTodo(string Id, string Text, bool Completed);
 public sealed record SyncWord(string Word, string Meaning);
@@ -120,12 +120,22 @@ public sealed record SyncSnapshot(SyncAppearance Appearance, SyncDisplay Display
 
     public static string Hash(ReadOnlySpan<byte> snapshot) => Convert.ToHexString(SHA256.HashData(snapshot));
 
-    public static SyncAction Choose(string localHash, string? cloudHash, string? lastSyncHash)
+    public static CloudUploadDecision DecideUpload(string localHash, string? cloudHash, string? knownCloudHash)
     {
-        if (cloudHash is null) return SyncAction.Upload;
-        if (cloudHash == localHash) return SyncAction.AlreadyCurrent;
-        if (lastSyncHash == localHash) return SyncAction.Download;
-        if (lastSyncHash == cloudHash) return SyncAction.Upload;
-        return SyncAction.Conflict;
+        if (cloudHash is null) return CloudUploadDecision.Upload;
+        if (cloudHash == localHash) return CloudUploadDecision.AlreadyCurrent;
+        return cloudHash == knownCloudHash ? CloudUploadDecision.Upload : CloudUploadDecision.CloudChanged;
+    }
+
+    public SyncSnapshot ClearLocalData(bool words, bool todos, bool display)
+    {
+        var defaults = display ? Capture(new AppSettings()) : null;
+        return this with
+        {
+            Words = words ? [] : Words,
+            Todos = todos ? [] : Todos,
+            Appearance = defaults?.Appearance ?? Appearance,
+            Display = defaults?.Display ?? Display
+        };
     }
 }

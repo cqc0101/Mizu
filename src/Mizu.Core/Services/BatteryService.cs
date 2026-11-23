@@ -28,6 +28,17 @@ public sealed class BatteryService
     private readonly SemaphoreSlim atkGate = new(1);
     public IReadOnlyList<BluetoothLink> BluetoothLinks { get; set; } = [];
     public IReadOnlyList<Peripheral> Current { get { lock(stateGate) return Compose(); } }
+    public async Task ClearCacheAsync(CancellationToken token)
+    {
+        await gate.WaitAsync(token);
+        try
+        {
+            try { File.Delete(cachePath); File.Delete(cachePath + ".tmp"); }
+            catch (DirectoryNotFoundException) { }
+            lock (stateGate) last = [];
+        }
+        finally { gate.Release(); }
+    }
     private IReadOnlyList<Peripheral> Compose()
     {
         var now = DateTimeOffset.UtcNow;

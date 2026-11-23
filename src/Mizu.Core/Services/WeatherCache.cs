@@ -30,7 +30,12 @@ public sealed class WeatherCache(string? path = null)
     }
     public void Clear()
     {
-        try { File.Delete(file); }
+        try { DeleteFiles(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AppLog.Write("weather.cache.clear", ex.GetType().Name); }
+    }
+    public void DeleteFiles()
+    {
+        try { File.Delete(file); File.Delete(file + ".tmp"); }
+        catch (DirectoryNotFoundException) { }
     }
 }
