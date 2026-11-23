@@ -217,7 +217,9 @@ var add=Desc<Button>(grid).Single(b=>b.ToolTip is ToolTip hint && Equals(hint.Co
 main.UpdateLayout(); Check(settingsLive.Todos.Count==3 && settingsLive.Todos[2].Text=="New inline task","Inline add persists a new task");
 settingsLive.ShowWeather=settingsLive.ShowDevices=settingsLive.ShowMemory=settingsLive.ShowTemperature=false;settingsLive.ShowTodo=false;main.ApplySettings();Pump(330);main.UpdateLayout();
 Check(grid.ActualHeight==WidgetLayout.Calculate(settingsLive).Height && Desc<TextBox>(grid).Count()==0,"Disabling modules reflows window and removes todo editor");
-var dialog=new SettingsWindow(main);dialog.Show();dialog.UpdateLayout();var tabs=Desc<TabControl>(dialog).Single();Check(tabs.Items.Count==9,"Nine settings pages including vocabulary and About");
+var dialog=new SettingsWindow(main);dialog.Show();dialog.UpdateLayout();var tabs=Desc<TabControl>(dialog).Single();Check(tabs.Items.Count==10,"Ten settings pages including vocabulary, About and sync");
+tabs.SelectedIndex=9;dialog.UpdateLayout();
+Check(Desc<TextBlock>(dialog).Any(t=>t.Text=="调试与界面预览不联网同步。"),"Sync is off in preview windows");
 tabs.SelectedIndex=7;dialog.UpdateLayout();
 TextBox WordInput(string name)=>Desc<TextBox>(dialog).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)==name);
 WordInput("新单词").Text="serene";WordInput("新单词释义").Text="宁静的";

@@ -12,6 +12,8 @@ __pycache__/
 .env.*
 !.env.example
 settings.json
+mizu-sync-backup.json
+mizu-sync-backup.json.tmp
 diagnostics.json
 battery.json
 smoke-output/

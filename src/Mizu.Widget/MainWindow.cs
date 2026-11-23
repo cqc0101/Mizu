@@ -634,6 +634,42 @@ public sealed class MainWindow : Window
         try { store.Save(Settings); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AppLog.Write("settings.save", ex.GetType().Name); }
     }
+    internal bool SyncAvailable => persistSettings && !Surface.PreviewMaterial;
+    internal static string SyncBackupPath => Path.Combine(SettingsStore.DataDirectory, "mizu-sync-backup.json");
+
+    internal void SaveFirebaseSync(FirebaseConnection? connection, SyncSnapshot? downloaded = null)
+    {
+        if (!SyncAvailable) throw new InvalidOperationException("预览模式不保存同步设置。");
+        string? previousConnection = Settings.ProtectedFirebaseSync;
+        string? nextConnection = connection?.Protect();
+        var previousData = downloaded is null ? null : SyncSnapshot.Capture(Settings);
+        if (previousData is not null)
+        {
+            var backup = previousData.Encode();
+            Directory.CreateDirectory(SettingsStore.DataDirectory);
+            File.WriteAllBytes(SyncBackupPath + ".tmp", backup);
+            File.Move(SyncBackupPath + ".tmp", SyncBackupPath, true);
+        }
+        try
+        {
+            downloaded?.ApplyTo(Settings);
+            Settings.ProtectedFirebaseSync = nextConnection;
+            store.Save(Settings);
+        }
+        catch
+        {
+            previousData?.ApplyTo(Settings);
+            Settings.ProtectedFirebaseSync = previousConnection;
+            throw;
+        }
+        if (downloaded is not null) ApplySettings();
+    }
+
+    internal void ReopenSyncSettings(string message)
+    {
+        OpenSettings();
+        settingsWindow?.ShowSync(message);
+    }
     public void PersistBeforeUpdate()
     {
         if (!persistSettings) throw new IOException("调试模式不执行更新。");

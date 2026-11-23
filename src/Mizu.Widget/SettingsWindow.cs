@@ -14,7 +14,7 @@ using Mizu.Widget.Controls;
 
 namespace Mizu.Widget;
 
-public sealed class SettingsWindow : Window
+public sealed partial class SettingsWindow : Window
 {
     private readonly MainWindow widget;
     private readonly SettingsTheme theme;
@@ -89,6 +89,7 @@ public sealed class SettingsWindow : Window
         var tabs = new TabControl { Background = Brushes.Transparent, BorderThickness = new(0), TabStripPlacement = Dock.Left };
         navigation = tabs;
         AddTab(tabs, "外观", Appearance()); AddTab(tabs, "显示内容", Contents()); AddTab(tabs, "天气", Weather()); AddTab(tabs, "诗词", Poetry()); AddTab(tabs, "待办", Todos()); AddTab(tabs, "设备", Devices()); AddTab(tabs, "推送", Push()); AddTab(tabs, "单词本", Vocabulary()); AddTab(tabs, "关于", About());
+        AddTab(tabs, "同步", FirebaseSyncTab());
         Grid.SetRow(tabs, 1); root.Children.Add(tabs); Grid.SetRow(status, 2); root.Children.Add(status); Content = root;
         saveDelay.Tick += (_, _) => FlushPendingSave();
         widget.SettingsApplied += RefreshTheme;
@@ -99,7 +100,12 @@ public sealed class SettingsWindow : Window
     }
     private void AddTab(TabControl tabs, string title, UIElement content) => tabs.Items.Add(new TabItem
     { Header = new TextBlock { Text = title, Margin = new(16, 13, 16, 13) }, Content = new Border { Background = theme.Brush("#FCFCF8"), CornerRadius = new(18), Padding = new(24, 20, 15, 16), Child = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } } });
-    public void ShowUpdates() { if (navigation is not null) navigation.SelectedIndex = navigation.Items.Count - 1; }
+    private void SelectTab(string name)
+    {
+        if (navigation is not null)
+            navigation.SelectedItem = navigation.Items.OfType<TabItem>().FirstOrDefault(tab => tab.Header is TextBlock header && header.Text == name);
+    }
+    public void ShowUpdates() => SelectTab("关于");
     private TextBlock Label(string text, bool detail = false) => new() { Text = text, FontSize = detail ? 12 : 13, TextWrapping = TextWrapping.Wrap,
         Foreground = theme.Brush(detail ? "#8A9183" : "#434B3E"), Margin = new(0, 0, 0, detail ? 15 : 9), LineHeight = detail ? 20 : double.NaN };
     private Button ActionButton(string text, RoutedEventHandler action)

@@ -83,6 +83,7 @@ public sealed class AppSettings
     public Place? Location { get; set; }
     public bool PushEnabled { get; set; }
     public string? ProtectedPushToken { get; set; }
+    public string? ProtectedFirebaseSync { get; set; }
     public int BatteryThreshold { get; set; } = 20;
     public double CpuThreshold { get; set; } = 90;
     public double MemoryThreshold { get; set; } = 90;
