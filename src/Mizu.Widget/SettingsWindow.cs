@@ -24,6 +24,7 @@ public sealed partial class SettingsWindow : Window
     private readonly StackPanel deviceList = new();
     private readonly StackPanel todoList = new();
     private readonly StackPanel vocabularyList = new();
+    private readonly Dictionary<VocabularyEntry, Grid> vocabularyRows = new();
     private Slider? vocabularyRowsSlider;
     private TextBlock? vocabularyCapacity;
     private bool syncingVocabularyRows;
@@ -161,6 +162,7 @@ public sealed partial class SettingsWindow : Window
         theme.Apply(settings.Theme);
         if (themeSelector is not null) themeSelector.SelectedIndex = Array.FindIndex(ThemePalette.All, p => p.Id == settings.Theme);
         RefreshVocabularyCapacity();
+        SynchronizeVocabularyList();
     }
     private UIElement Appearance()
     {
@@ -473,12 +475,12 @@ public sealed partial class SettingsWindow : Window
                 word.SelectAll();
                 return;
             }
-            word.Clear(); meaning.Clear(); Save(); BuildVocabularyList(); status.Text = "单词已保存"; word.Focus();
+            word.Clear(); meaning.Clear(); Save(); status.Text = "单词已保存"; word.Focus();
         }
         panel.Children.Add(ActionButton("添加单词", (_, _) => Add()));
         meaning.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Add(); e.Handled = true; } };
         panel.Children.Add(Label("下方可编辑单词与释义，移开焦点自动保存；关闭显示不会删除词条。数据仅保存在本机。", true));
-        panel.Children.Add(vocabularyList); BuildVocabularyList(); return panel;
+        panel.Children.Add(vocabularyList); SynchronizeVocabularyList(); return panel;
     }
     private void RefreshVocabularyCapacity()
     {
@@ -506,44 +508,85 @@ public sealed partial class SettingsWindow : Window
             var entries = VocabularyImport.Parse(File.ReadAllText(dialog.FileName), Path.GetExtension(dialog.FileName));
             int added = 0;
             foreach (var entry in entries) if (VocabularyImport.TryAdd(settings, entry.Word, entry.Meaning ?? "", out _)) added++;
-            Save(); BuildVocabularyList(); status.Text = $"已导入 {added} 个，跳过重复、超长或超出容量的 {entries.Count - added} 个；最多保存 500 个";
+            Save(); status.Text = $"已导入 {added} 个，跳过重复、超长或超出容量的 {entries.Count - added} 个；最多保存 500 个";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or JsonException or Microsoft.VisualBasic.FileIO.MalformedLineException)
         { status.Text = "导入失败：" + ex.Message; }
     }
-    private void BuildVocabularyList()
+    private void SynchronizeVocabularyList()
     {
-        vocabularyList.Children.Clear();
-        foreach (var entry in settings.Vocabulary)
+        var entries = settings.Vocabulary;
+        var rows = vocabularyList.Children;
+        int common = 0;
+        while (common < entries.Count && common < rows.Count && ReferenceEquals(((Grid)rows[common]).Tag, entries[common]))
+            common++;
+        if (common == entries.Count && common == rows.Count) return;
+
+        if (common < rows.Count)
         {
-            var row = new Grid { Margin = new(0, 6, 0, 6) }; row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = new(44) });
-            var fields = new StackPanel();
-            var word = new TextBox { Text = entry.Word, MaxLength = 80, Padding = new(8), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
-            var meaning = new TextBox { Text = entry.Meaning, MaxLength = 200, Padding = new(8), Margin = new(0, 4, 0, 0), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
-            System.Windows.Automation.AutomationProperties.SetName(word, "编辑单词");
-            System.Windows.Automation.AutomationProperties.SetName(meaning, "编辑释义");
-            word.LostKeyboardFocus += (_, _) => {
-                var text = word.Text.Trim();
-                if (text.Length == 0 || settings.Vocabulary.Any(w => w != entry && w.Word.Equals(text, StringComparison.OrdinalIgnoreCase))) { word.Text = entry.Word; return; }
-                entry.Word = text; Save();
-            };
-            meaning.LostKeyboardFocus += (_, _) => { entry.Meaning = meaning.Text.Trim(); Save(); };
-            fields.Children.Add(word); fields.Children.Add(meaning); row.Children.Add(fields);
-            var delete = ActionButton("", (_, _) =>
+            var retained = entries.ToHashSet();
+            for (int index = rows.Count - 1; index >= common; index--)
             {
-                settings.Vocabulary.Remove(entry);
-                Save();
-                BuildVocabularyList();
-            });
-            delete.Content = new IconView("trash", theme.Brush("#4A5945"), 1.3) { Width = 16, Height = 16 };
-            delete.Width = delete.Height = 32;
-            delete.Padding = new(0);
-            delete.Margin = new(8, 0, 0, 0);
-            delete.HorizontalAlignment = HorizontalAlignment.Left;
-            delete.VerticalAlignment = VerticalAlignment.Center;
-            HoverHints.Set(delete, "删除单词"); System.Windows.Automation.AutomationProperties.SetName(delete, "删除单词");
-            Grid.SetColumn(delete, 1); row.Children.Add(delete); vocabularyList.Children.Add(row);
+                var row = (Grid)rows[index];
+                var entry = (VocabularyEntry)row.Tag;
+                if (retained.Contains(entry)) continue;
+                vocabularyRows.Remove(entry);
+                HoverHints.CloseTree(row);
+                rows.RemoveAt(index);
+            }
         }
+        for (int index = common; index < entries.Count; index++)
+        {
+            var entry = entries[index];
+            if (!vocabularyRows.TryGetValue(entry, out var row))
+            {
+                row = CreateVocabularyRow(entry);
+                vocabularyRows.Add(entry, row);
+                rows.Insert(index, row);
+            }
+            else if (index >= rows.Count || !ReferenceEquals(rows[index], row))
+            {
+                rows.Remove(row);
+                rows.Insert(index, row);
+            }
+        }
+    }
+    private Grid CreateVocabularyRow(VocabularyEntry entry)
+    {
+        var row = new Grid { Tag = entry, Margin = new(0, 6, 0, 6) };
+        row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = new(44) });
+        var fields = new StackPanel();
+        var word = new TextBox { Text = entry.Word, MaxLength = 80, Padding = new(8), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
+        var meaning = new TextBox { Text = entry.Meaning, MaxLength = 200, Padding = new(8), Margin = new(0, 4, 0, 0), Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6") };
+        System.Windows.Automation.AutomationProperties.SetName(word, "编辑单词");
+        System.Windows.Automation.AutomationProperties.SetName(meaning, "编辑释义");
+        word.LostKeyboardFocus += (_, _) =>
+        {
+            if (!settings.Vocabulary.Contains(entry)) return;
+            var text = word.Text.Trim();
+            if (text.Length == 0 || settings.Vocabulary.Any(w => w != entry && w.Word.Equals(text, StringComparison.OrdinalIgnoreCase)))
+                text = entry.Word;
+            word.Text = text;
+            if (entry.Word != text) { entry.Word = text; Save(); }
+        };
+        meaning.LostKeyboardFocus += (_, _) =>
+        {
+            if (!settings.Vocabulary.Contains(entry)) return;
+            var text = meaning.Text.Trim();
+            meaning.Text = text;
+            if (entry.Meaning != text) { entry.Meaning = text; Save(); }
+        };
+        fields.Children.Add(word); fields.Children.Add(meaning); row.Children.Add(fields);
+        var delete = ActionButton("", (_, _) => { settings.Vocabulary.Remove(entry); Save(); });
+        delete.Content = new IconView("trash", theme.Brush("#4A5945"), 1.3) { Width = 16, Height = 16 };
+        delete.Width = delete.Height = 32;
+        delete.Padding = new(0);
+        delete.Margin = new(8, 0, 0, 0);
+        delete.HorizontalAlignment = HorizontalAlignment.Left;
+        delete.VerticalAlignment = VerticalAlignment.Center;
+        HoverHints.Set(delete, "删除单词"); System.Windows.Automation.AutomationProperties.SetName(delete, "删除单词");
+        Grid.SetColumn(delete, 1); row.Children.Add(delete);
+        return row;
     }
     private void ExportVocabulary()
     {

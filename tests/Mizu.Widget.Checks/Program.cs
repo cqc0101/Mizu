@@ -453,6 +453,16 @@ Check(topRightWord.X > topLeftWord.X && topRightWord.Y == topLeftWord.Y &&
     secondRowWord.X == topLeftWord.X && secondRowWord.Y > topLeftWord.Y && WordOffset() == 0,
     "The rendered grid holds two words in the top row and the remaining word in the next row");
 main.Settings.VocabularyColumns = 1;main.ApplySettings();Pump(330);
+tabs.SelectedIndex = 7;
+dialog.UpdateLayout();
+var wordDraft = WordInput("新单词");
+wordDraft.Text = "settings draft";
+var meaningDraft = Desc<TextBox>(dialog).First(box => System.Windows.Automation.AutomationProperties.GetName(box) == "编辑释义");
+meaningDraft.Text = "尚未保存的释义";
+var vocabularyScroll = (ScrollViewer)((Border)((TabItem)tabs.SelectedItem).Content).Child;
+vocabularyScroll.ScrollToVerticalOffset(60);
+dialog.UpdateLayout();
+double vocabularySettingsOffset = vocabularyScroll.VerticalOffset;
 scrollVocabulary.Invoke(main.Surface, [-1200]);Pump(230);
 Check(WordOffset() == 1, "The editor opens while the reader is on a later page");
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]);Pump(320);
@@ -471,6 +481,12 @@ Check(main.TodoReveal>.99 && main.VisualContent.Height-WidgetLayout.Calculate(ma
 Check(WordOffset() == 2 && main.Settings.Vocabulary[^1].Word == "quiet" &&
     main.Settings.Vocabulary[^1].Meaning == "安静的" && WordPosition("quiet").Y > WordPosition("bloom").Y,
     "The hover editor appends a word and reveals it in the last row");
+Check(Desc<TextBox>(dialog).Any(box => box.Text == "quiet" &&
+    System.Windows.Automation.AutomationProperties.GetName(box) == "编辑单词"), "The open settings list receives the inline addition");
+Check(ReferenceEquals(wordDraft, WordInput("新单词")) && wordDraft.Text == "settings draft" &&
+    Desc<TextBox>(dialog).Contains(meaningDraft) && meaningDraft.Text == "尚未保存的释义" &&
+    Math.Abs(vocabularySettingsOffset - vocabularyScroll.VerticalOffset) < .1,
+    "An inline addition preserves settings editor instances, drafts and scroll position");
 inlineWord.Text = " QUIET ";
 inlineMeaning.Text = "不要覆盖";
 AddChoice("保存单词").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -479,6 +495,7 @@ Check(inlineWord.ToolTip is ToolTip { IsOpen: true, Content: "单词已存在" }
     "A duplicate submitted through the save button immediately shows a warning and preserves input and scroll position");
 inlineWord.Text = "";
 Check(inlineWord.ToolTip is ToolTip { IsOpen: false }, "Editing the word dismisses the validation warning");
+dialog.WindowState = WindowState.Minimized;
 main.Settings.Vocabulary.AddRange(Enumerable.Range(1, 12).Select(i => new VocabularyEntry { Word = "extra" + i }));
 main.ApplySettings();Pump(300);main.UpdateLayout();
 inlineWord.Text = "new tail";inlineMeaning.Text = "";
@@ -487,6 +504,11 @@ Pump(45);
 Check(WordOffset() == 0, "A distant append fades out the source page before switching");
 Pump(280);
 Check(WordOffset() == 15 && WordPosition("new tail").Y > 0, "The transition reveals the new word on a distant last page");
+dialog.WindowState = WindowState.Normal;
+Pump(60);
+dialog.UpdateLayout();
+Check(Desc<TextBox>(dialog).Any(box => box.Text == "new tail" &&
+    System.Windows.Automation.AutomationProperties.GetName(box) == "编辑单词"), "A minimized settings window receives vocabulary additions");
 main.Settings.VocabularyHideMeaning=true;main.ApplySettings();Pump(330);main.UpdateLayout();Capture(main.VisualContent);
 Check(main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==84,"Hidden Chinese meanings shrink the displayed groups");
 main.Settings.ShowTodo=false;main.ApplySettings();
