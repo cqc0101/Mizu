@@ -143,6 +143,7 @@ public sealed class MainWindow : Window
             if (e.OriginalSource is DependencyObject source && IsInteractive(source)) return;
             if (Settings.PanelLocked) { e.Handled = true; return; }
             var point = e.GetPosition(Surface);
+            if (e.OriginalSource == Surface && Surface.TrySpeakVocabulary(point)) { e.Handled = true; return; }
             var hardwareArea = Surface.Layout.Sections.FirstOrDefault(s => point.Y >= s.Top && point.Y < s.Top + s.Height && s.Opacity >= .9);
             if (hardwareArea?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory)
             {
@@ -717,6 +718,7 @@ public sealed class MainWindow : Window
         if (disposed) return; disposed = true; quitting = true;
         Updates.Dispose();
         Backups.Dispose();
+        Surface.StopVocabularySpeech();
         settingsWindow?.Close(); historyWindow?.Close(); SaveSettings();
         tray.Visible = false; var trayIcon = tray.Icon; tray.Dispose(); trayIcon?.Dispose();
         NativeWindow.UnregisterHotKey(new WindowInteropHelper(this).Handle, 0x4d5a);

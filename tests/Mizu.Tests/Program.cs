@@ -210,6 +210,10 @@ paging.Update(pagingSettings, now.AddMinutes(4));
 paging.Scroll(pagingSettings, -120, 0, now.AddMinutes(4));
 Check(paging.VisibleRowCount == 8 && paging.Offset == 0, "A list that fits in the viewport stays put");
 var multiColumnPaging = new VocabularyRotation();
+Check(EnglishLexicon.Contains(" serene ") && EnglishLexicon.Contains("METICULOUS") &&
+    EnglishLexicon.Contains("don’t"), "The bundled English dictionary recognizes known spellings and apostrophe variants");
+Check(!EnglishLexicon.Contains("sernee") && !EnglishLexicon.Contains("你好") &&
+    !EnglishLexicon.Contains("route reflector") && !EnglishLexicon.Contains("bgp"), "Unknown words and unsupported phrases do not offer pronunciation");
 pagingSettings.VocabularyRandom = false;
 pagingSettings.VocabularyVisibleRows = 3;
 multiColumnPaging.Update(pagingSettings, now, 2, 3);

@@ -36,6 +36,11 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     private int vocabularyScrollGeneration;
     private IReadOnlyList<VocabularyEntry>? drawnVocabularyOrder;
     private int drawnVocabularyColumns = 1;
+    private const double SpeakerTargetSize = 24;
+    private readonly WindowsWordSpeech wordSpeech = new();
+    private Point? vocabularyPointer;
+    private VocabularyCell? pointedWord, drawnSpeaker;
+    private readonly record struct VocabularyCell(int Index, VocabularyEntry Entry, Rect SpeakerBounds);
     private readonly List<string> deviceOrder = [];
     public IReadOnlyList<Peripheral> VisibleDevices
     {
@@ -96,6 +101,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         bool columnsChanged = drawnVocabularyColumns != target.VocabularyColumns;
         drawnVocabularyColumns = target.VocabularyColumns;
         SyncVocabularyOffset(snap: columnsChanged || vocabulary.Offset < vocabularyScrollTarget);
+        drawnSpeaker = null;
         var bounds = new Rect(0, 0, width, height);
         d.PushClip(new RectangleGeometry(bounds, radius, radius));
         panel.Draw(d, bounds, radius);
@@ -164,6 +170,10 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         int end = Math.Min(vocabulary.Order.Count, (int)Math.Ceiling(offset + section.Height / rowHeight) * columns);
         double columnWidth = VocabularyColumnWidth(width, columns);
         double stride = columnWidth + WidgetLayout.VocabularyColumnGap;
+        if (!settings.PanelLocked && vocabularyPointer is { } pointer &&
+            VocabularyCellAt(pointer, section, width) is { } cell &&
+            EnglishLexicon.Contains(cell.Entry.Word) && wordSpeech.VoiceName is not null)
+            drawnSpeaker = cell;
         drawing.PushClip(new RectangleGeometry(new Rect(0, section.Top, width, section.Height)));
         drawing.PushOpacity((double)GetValue(VocabularyOpacityProperty));
         for (int i = first * columns; i < end; i++)
@@ -171,7 +181,13 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             var entry = vocabulary.Order[i];
             double x = WidgetLayout.VocabularyInset + i % columns * stride;
             double y = section.Top + (i / columns - offset) * rowHeight;
-            Text(drawing, entry.Word, x, y + 3, 22, foreground, Dpi, medium: true, width: columnWidth);
+            Text(drawing, entry.Word, x, y + 3, 22, foreground, Dpi, medium: true,
+                width: Math.Max(1, columnWidth - SpeakerTargetSize));
+            if (drawnSpeaker is { } speaker && speaker.Index == i)
+            {
+                var icon = speaker.SpeakerBounds;
+                Art.Icon(drawing, "speaker", icon.X + 4, icon.Y + 4, 16, secondary);
+            }
             if (!settings.VocabularyHideMeaning)
                 Art.Text(drawing, entry.Meaning, x, y + WidgetLayout.VocabularyMeaningTop, settings.VocabularyMeaningFontSize * settings.TextScale,
                     secondary, Dpi, width: columnWidth, weight: settings.TextWeight);
@@ -179,6 +195,38 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         drawing.Pop();
         drawing.Pop();
     }
+
+    private VocabularyCell? VocabularyCellAt(Point point, SectionLayout section, double width)
+    {
+        if (TransitionLayout is not null || Math.Abs(VocabularyOffset - vocabularyScrollTarget) >= .01 ||
+            point.Y < section.Top || point.Y >= section.Top + section.Height) return null;
+
+        double rowHeight = WidgetLayout.VocabularyRowHeight(settings);
+        double columnWidth = VocabularyColumnWidth(width, drawnVocabularyColumns);
+        double stride = columnWidth + WidgetLayout.VocabularyColumnGap;
+        double x = point.X - WidgetLayout.VocabularyInset;
+        int column = (int)Math.Floor(x / stride);
+        if (column < 0 || column >= drawnVocabularyColumns || x - column * stride >= columnWidth) return null;
+        int row = (int)Math.Floor(VocabularyOffset + (point.Y - section.Top) / rowHeight);
+        int index = row * drawnVocabularyColumns + column;
+        if (index < 0 || index >= vocabulary.Order.Count) return null;
+        double right = WidgetLayout.VocabularyInset + column * stride + columnWidth;
+        double top = section.Top + (row - VocabularyOffset) * rowHeight;
+        return new(index, vocabulary.Order[index], new(right - SpeakerTargetSize, top + 3, SpeakerTargetSize, SpeakerTargetSize));
+    }
+
+    internal bool TrySpeakVocabulary(Point point)
+    {
+        if (settings.PanelLocked || drawnSpeaker is not { } speaker || !speaker.SpeakerBounds.Contains(point)) return false;
+        var layout = Layout;
+        var words = layout.Sections.FirstOrDefault(section => section.Kind == WidgetSection.Vocabulary);
+        if (words is null || VocabularyCellAt(point, words, layout.Width) != speaker) return false;
+        HoverHints.Close(this);
+        _ = wordSpeech.PlayAsync(speaker.Entry.Word);
+        return true;
+    }
+
+    internal void StopVocabularySpeech() => wordSpeech.Dispose();
 
     internal void RevealLatestVocabulary()
     {
@@ -466,7 +514,15 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     }
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        var p = e.GetPosition(this); var area = Layout.Sections.FirstOrDefault(s => p.Y >= s.Top && p.Y <= s.Top + s.Height);
+        var layout = Layout;
+        var p = e.GetPosition(this); var area = layout.Sections.FirstOrDefault(s => p.Y >= s.Top && p.Y <= s.Top + s.Height);
+        vocabularyPointer = area?.Kind == WidgetSection.Vocabulary ? p : null;
+        var cell = area?.Kind == WidgetSection.Vocabulary ? VocabularyCellAt(p, area, layout.Width) : null;
+        if (cell != pointedWord)
+        {
+            pointedWord = cell;
+            InvalidateVisual();
+        }
         string? tip = null;
         if (area?.Kind == WidgetSection.Weather) tip = (settings.Location is null ? "双击设置选择城市" : settings.Location.ToString()) + (state.Weather is { } w ? $"\n{w.Humidity}% · {w.WindKph:0} km/h\n更新 {w.UpdatedAt.ToLocalTime():HH:mm} · {w.Source}" + (w.HourResolution > 1 ? $"\n备用数据：每 {w.HourResolution} 小时一段，可用天数有限" : "") : "\n天气尚未就绪") + (state.WeatherCached ? "\n启动缓存 · 正在联网刷新" : "") + (state.WeatherFailed ? "\n更新失败，30 秒后重试；当前可能为上次读数" : "");
         if (area?.Kind == WidgetSection.Devices)
@@ -503,17 +559,16 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         }
         Cursor = !settings.PanelLocked && (area?.Kind is WidgetSection.Metrics or WidgetSection.GpuMemory) ? Cursors.Hand : Cursors.Arrow;
         if (area?.Kind == WidgetSection.Network) tip = NetworkHint;
-        if (area?.Kind == WidgetSection.Vocabulary) {
-            var row = (int)Math.Floor(VocabularyOffset + (p.Y - area.Top) / WidgetLayout.VocabularyRowHeight(settings));
-            var columnWidth = VocabularyColumnWidth(Width, drawnVocabularyColumns);
-            var stride = columnWidth + WidgetLayout.VocabularyColumnGap;
-            var x = p.X - WidgetLayout.VocabularyInset;
-            var column = (int)Math.Floor(x / stride);
-            var index = row * drawnVocabularyColumns + column;
-            if (TransitionLayout is null && Math.Abs(VocabularyOffset - vocabularyScrollTarget) < .01 &&
-                row >= 0 && column >= 0 && column < drawnVocabularyColumns && x - column * stride < columnWidth &&
-                index < vocabulary.Order.Count) {
-                var word = vocabulary.Order[index];
+        if (cell is { } hovered)
+        {
+            if (drawnSpeaker == hovered && hovered.SpeakerBounds.Contains(p))
+            {
+                Cursor = Cursors.Hand;
+                tip = "点击朗读";
+            }
+            else
+            {
+                var word = hovered.Entry;
                 tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮滚动单词";
             }
         }
@@ -523,7 +578,13 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         base.OnMouseMove(e);
     }
     protected override void OnMouseLeave(MouseEventArgs e)
-    { HoverHints.Close(this); base.OnMouseLeave(e); }
+    {
+        vocabularyPointer = null;
+        pointedWord = null;
+        if (drawnSpeaker is not null) InvalidateVisual();
+        HoverHints.Close(this);
+        base.OnMouseLeave(e);
+    }
 }
 
 public sealed class IconView(string name, Brush brush, double stroke = 1.2) : FrameworkElement

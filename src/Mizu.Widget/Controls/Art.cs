@@ -28,6 +28,9 @@ public static class Art
         switch (kind)
         {
             case "music": d.DrawGeometry(null, p, Geometry.Parse("M 10,17 L 10,4 20,2 20,15 M 10,8 L 20,6")); d.DrawEllipse(null, p, new(6,18), 4, 3); d.DrawEllipse(null, p, new(16,16), 4, 3); break;
+            case "speaker":
+                d.DrawGeometry(null, p, Geometry.Parse("M 3,9 L 7,9 12,5 12,19 7,15 3,15 Z M 15,9 A 4,4 0 0 1 15,15 M 18,6 A 8,8 0 0 1 18,18"));
+                break;
             case "previous": L(5,5,5,19); d.DrawGeometry(brush, null, Geometry.Parse("M 18,5 L 7,12 18,19 Z")); break;
             case "next": L(19,5,19,19); d.DrawGeometry(brush, null, Geometry.Parse("M 6,5 L 17,12 6,19 Z")); break;
             case "play": d.DrawGeometry(brush, null, Geometry.Parse("M 7,4 L 20,12 7,20 Z")); break;

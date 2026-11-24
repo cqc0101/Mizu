@@ -4,6 +4,8 @@
 
 Mizu source is MIT licensed. Third-party software retains its own license.
 
+- **CMUdict**, Carnegie Mellon University. The offline English lookup derives its spellings from the [pinned CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict/tree/74790861f652b15e4ac49015a90074ad62a27690). Only unique lowercase spellings are bundled. Copyright and redistribution conditions are in `licenses/CMUdict-LICENSE.txt`.
+
 - **C#/WinRT and Windows SDK .NET projections**, Microsoft and contributors, MIT. Used for Windows system media sessions. https://github.com/microsoft/CsWinRT. Microsoft runtime/projection binaries retain their original notices.
 
 - **.NET 10 / WPF / Windows Forms**, Microsoft and contributors. MIT, with additional third-party notices. https://github.com/dotnet/runtime and https://github.com/dotnet/wpf. Self-contained distributions include Microsoft runtime binaries. See `licenses/dotnet-*`.

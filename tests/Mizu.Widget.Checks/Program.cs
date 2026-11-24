@@ -109,6 +109,39 @@ foreach (double opacity in new[] { .15, .35, .95 })
     }
 }
 var settingsLive=new AppSettings { ShowTodo=true,Todos=[new(){Text="First"},new(){Text="Second"}],WeatherDaily=true };
+var speechSettings = new AppSettings
+{
+    ShowWeather = false, ShowDevices = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false,
+    ShowVocabulary = true, VocabularyColumns = 2, Vocabulary = [new() { Word = "serene" }, new() { Word = "sernee" }]
+};
+var speechSurface = new WidgetSurface(new WidgetState(), speechSettings);
+var speechLayout = speechSurface.TargetLayout;
+speechSurface.Width = speechLayout.Width;
+speechSurface.Height = speechLayout.Height;
+speechSurface.Measure(new(speechLayout.Width, speechLayout.Height));
+speechSurface.Arrange(new(0, 0, speechLayout.Width, speechLayout.Height));
+var hoverPointer = typeof(WidgetSurface).GetField("vocabularyPointer", BindingFlags.Instance | BindingFlags.NonPublic)!;
+var shownSpeaker = typeof(WidgetSurface).GetField("drawnSpeaker", BindingFlags.Instance | BindingFlags.NonPublic)!;
+void HoverSpeechWord(Point? point)
+{
+    hoverPointer.SetValue(speechSurface, point);
+    speechSurface.InvalidateVisual();
+    speechSurface.UpdateLayout();
+    Capture(speechSurface);
+}
+using (var voice = new WindowsWordSpeech())
+{
+    var rowY = speechLayout.Sections.Single().Top + 14;
+    HoverSpeechWord(null);
+    Check(shownSpeaker.GetValue(speechSurface) is null, "Pronunciation control stays hidden until hover");
+    HoverSpeechWord(new Point(100, rowY));
+    Check((shownSpeaker.GetValue(speechSurface) is not null) == (voice.VoiceName is not null),
+        "Hovering the known word offers pronunciation when an English voice is installed");
+    HoverSpeechWord(new Point(speechLayout.Width - 80, rowY));
+    Check(shownSpeaker.GetValue(speechSurface) is null, "The unlisted word in the next column does not show a speaker");
+    HoverSpeechWord(null);
+    Check(shownSpeaker.GetValue(speechSurface) is null, "The hover speaker disappears on leave");
+}
 var gpuSettings = new AppSettings { ShowWeather = false, ShowDevices = false, ShowCpu = false, ShowMemory = false, ShowTemperature = false };
 var gpuState = new WidgetState { GpuMemory = new GpuMemorySnapshot(1073741824L, null, 4 * 1073741824L, "NVIDIA") };
 var gpuSurface = new WidgetSurface(gpuState, gpuSettings) { Width = 356 };

@@ -3,3 +3,4 @@
 *.ico binary
 *.exe binary
 *.zip binary
+*.gz binary
