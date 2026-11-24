@@ -420,6 +420,8 @@ Check(topRightWord.X > topLeftWord.X && topRightWord.Y == topLeftWord.Y &&
     secondRowWord.X == topLeftWord.X && secondRowWord.Y > topLeftWord.Y && WordOffset() == 0,
     "The rendered grid holds two words in the top row and the remaining word in the next row");
 main.Settings.VocabularyColumns = 1;main.ApplySettings();Pump(330);
+scrollVocabulary.Invoke(main.Surface, [-1200]);Pump(230);
+Check(WordOffset() == 1, "The editor opens while the reader is on a later page");
 typeof(MainWindow).GetMethod("SetHover",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(main,[true]);Pump(320);
 Button AddChoice(string name)=>Desc<Button>(main).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==name);
 Check(AddChoice("添加事件").IsVisible && AddChoice("添加单词").IsVisible,"Both enabled add actions appear side by side");
@@ -429,9 +431,29 @@ var inlineMeaning=Desc<TextBox>(main).Single(t=>System.Windows.Automation.Automa
 main.Activate();inlineWord.Focus();Pump(260);inlineWord.Text="quiet";
 inlineWord.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main),0,Key.Enter){RoutedEvent=Keyboard.KeyDownEvent});Pump(20);
 Check(inlineMeaning.IsKeyboardFocusWithin,"Word Enter moves focus to the separate note row");
-inlineMeaning.Text="安静的";inlineMeaning.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main),0,Key.Enter){RoutedEvent=Keyboard.KeyDownEvent});Pump(260);
+inlineMeaning.Text="安静的";inlineMeaning.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(main),0,Key.Enter){RoutedEvent=Keyboard.KeyDownEvent});
+Pump(65);Check(WordOffset() >= 1 && WordOffset() < 2, "Adding from a later page animates from the current position");
+Pump(260);
 Check(main.TodoReveal>.99 && main.VisualContent.Height-WidgetLayout.Calculate(main.Settings).Height>80,"Two-row word editor reserves its full animated height");
-Check(main.Settings.Vocabulary.Any(w=>w.Word=="quiet" && w.Meaning=="安静的"),"Hover editor saves words without opening settings");
+Check(WordOffset() == 2 && main.Settings.Vocabulary[^1].Word == "quiet" &&
+    main.Settings.Vocabulary[^1].Meaning == "安静的" && WordPosition("quiet").Y > WordPosition("bloom").Y,
+    "The hover editor appends a word and reveals it in the last row");
+inlineWord.Text = " QUIET ";
+inlineMeaning.Text = "不要覆盖";
+AddChoice("保存单词").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(inlineWord.ToolTip is ToolTip { IsOpen: true, Content: "单词已存在" } &&
+    inlineWord.Text == " QUIET " && inlineMeaning.Text == "不要覆盖" && main.Settings.Vocabulary.Count == 4 && WordOffset() == 2,
+    "A duplicate submitted through the save button immediately shows a warning and preserves input and scroll position");
+inlineWord.Text = "";
+Check(inlineWord.ToolTip is ToolTip { IsOpen: false }, "Editing the word dismisses the validation warning");
+main.Settings.Vocabulary.AddRange(Enumerable.Range(1, 12).Select(i => new VocabularyEntry { Word = "extra" + i }));
+main.ApplySettings();Pump(300);main.UpdateLayout();
+inlineWord.Text = "new tail";inlineMeaning.Text = "";
+AddChoice("保存单词").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Pump(45);
+Check(WordOffset() == 0, "A distant append fades out the source page before switching");
+Pump(280);
+Check(WordOffset() == 15 && WordPosition("new tail").Y > 0, "The transition reveals the new word on a distant last page");
 main.Settings.VocabularyHideMeaning=true;main.ApplySettings();Pump(330);main.UpdateLayout();Capture(main.VisualContent);
 Check(main.Surface.TargetLayout.Sections.Single(s=>s.Kind==WidgetSection.Vocabulary).Height==84,"Hidden Chinese meanings shrink the displayed groups");
 main.Settings.ShowTodo=false;main.ApplySettings();

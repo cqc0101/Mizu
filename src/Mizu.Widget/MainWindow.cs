@@ -603,9 +603,30 @@ public sealed class MainWindow : Window
                 return box;
             }
             var word = Field("单词", 80, 0); var meaning = Field("注释", 200, 2);
+            var warning = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            void ClearWarning()
+            {
+                warning.Stop();
+                HoverHints.Close(word);
+                HoverHints.Set(word, "单词");
+                System.Windows.Automation.AutomationProperties.SetHelpText(word, "");
+            }
+            warning.Tick += (_, _) => ClearWarning();
+            word.TextChanged += (_, _) => { if (warning.IsEnabled) ClearWarning(); };
+            word.Unloaded += (_, _) => ClearWarning();
             word.KeyDown += (_, e) => { if (e.Key == Key.Enter) { meaning.Focus(); e.Handled = true; } };
             void AddWord() {
-                if (!VocabularyImport.TryAdd(Settings, word.Text, meaning.Text, out var result)) { HoverHints.Set(word, result); return; }
+                if (!TryAddVocabulary(word.Text, meaning.Text, out var result))
+                {
+                    word.Focus();
+                    word.SelectAll();
+                    HoverHints.Set(word, result);
+                    System.Windows.Automation.AutomationProperties.SetHelpText(word, result);
+                    if (word.ToolTip is System.Windows.Controls.ToolTip tip) tip.IsOpen = true;
+                    warning.Stop();
+                    warning.Start();
+                    return;
+                }
                 word.Clear(); meaning.Clear(); ApplySettings(); SaveSettings();
                 Dispatcher.BeginInvoke(new Action(() => { if (word.IsVisible && !Settings.PanelLocked) word.Focus(); }));
             }
@@ -625,6 +646,12 @@ public sealed class MainWindow : Window
         editor.Children.Add(inputRow);
         input.GotKeyboardFocus += (_, _) => { todoHideDelay.Stop(); AnimateTodoFooter(true); };
         input.LostKeyboardFocus += (_, _) => { if (!IsMouseOver) SetHover(false); };
+    }
+    internal bool TryAddVocabulary(string word, string meaning, out string message)
+    {
+        if (!VocabularyImport.TryAdd(Settings, word, meaning, out message)) return false;
+        Surface.RevealLatestVocabulary();
+        return true;
     }
     private void AddTodo(TextBox input)
     {

@@ -221,6 +221,27 @@ multiColumnPaging.Update(pagingSettings, now, 2, 2);
 Check(multiColumnPaging.Offset == 1 && multiColumnPaging.Order[2].Word == "3", "Changing columns keeps the previous leading word in view");
 multiColumnPaging.Scroll(pagingSettings, 960, 1, now, 2, 2);
 Check(multiColumnPaging.Offset == 0, "Multi-column wheel scrolling stops at the first row");
+foreach (bool random in new[] { false, true })
+{
+    var adding = new AppSettings
+    {
+        ShowVocabulary = true, VocabularyRandom = random, VocabularyVisibleRows = 2, VocabularyIntervalMinutes = 1,
+        Vocabulary = Enumerable.Range(1, 8).Select(i => new VocabularyEntry { Word = "word" + i }).ToList()
+    };
+    var viewport = new VocabularyRotation();
+    viewport.Update(adding, now, 2, 2);
+    viewport.Scroll(adding, -120, 0, now, 2, 2);
+    var previousOrder = viewport.Order.ToArray();
+    Check(VocabularyImport.TryAdd(adding, "new word", "note", out _), "A distinct word is accepted");
+    viewport.RevealLatest(adding, now.AddSeconds(15), 2, 2);
+    Check(viewport.Offset == 3 && viewport.Order.Take(previousOrder.Length).SequenceEqual(previousOrder) &&
+        viewport.Order[^1].Word == "new word" && adding.Vocabulary[^1].Word == "new word",
+        "Adding a word preserves the current cycle and reveals the final partial row");
+    viewport.Update(adding, now.AddSeconds(70), 2, 2);
+    Check(viewport.Offset == 3 && viewport.Order[^1].Word == "new word", "Adding gives the last page a fresh rotation interval");
+    Check(!VocabularyImport.TryAdd(adding, " NEW WORD ", "overwritten", out var message) && message == "单词已存在" &&
+        adding.Vocabulary[^1].Meaning == "note" && adding.Vocabulary.Count == 9, "Duplicate words ignore surrounding spaces and case");
+}
 rotationSettings.ShowVocabulary=true;
 rotationSettings.VocabularyHideMeaning=true;var wordArea=WidgetLayout.Calculate(rotationSettings).Sections.Single(s=>s.Kind==WidgetSection.Vocabulary);
 Check(wordArea.Height==84,"Hidden meanings release unused row height");

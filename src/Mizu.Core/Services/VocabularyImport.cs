@@ -37,8 +37,8 @@ public static class VocabularyImport
         word = word.Trim(); meaning = meaning.Trim();
         if (word.Length == 0) { message = "请先输入单词"; return false; }
         if (word.Length > 80 || meaning.Length > 200) { message = "单词最多 80 字符，释义最多 200 字符"; return false; }
-        if (settings.Vocabulary.Count >= 500) { message = "最多保存 500 个单词"; return false; }
         if (settings.Vocabulary.Any(w => w.Word.Equals(word, StringComparison.OrdinalIgnoreCase))) { message = "单词已存在"; return false; }
+        if (settings.Vocabulary.Count >= 500) { message = "最多保存 500 个单词"; return false; }
         settings.Vocabulary.Add(new() { Word = word, Meaning = meaning }); message = "单词已保存"; return true;
     }
 }

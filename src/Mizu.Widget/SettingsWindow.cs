@@ -466,7 +466,13 @@ public sealed partial class SettingsWindow : Window
         panel.Children.Add(Label("单词")); var word = Input("新单词", 80); panel.Children.Add(word);
         panel.Children.Add(Label("释义 / 笔记")); var meaning = Input("新单词释义", 200); panel.Children.Add(meaning);
         void Add() {
-            if (!VocabularyImport.TryAdd(settings, word.Text, meaning.Text, out var message)) { status.Text = message; return; }
+            if (!widget.TryAddVocabulary(word.Text, meaning.Text, out var message))
+            {
+                status.Text = message;
+                word.Focus();
+                word.SelectAll();
+                return;
+            }
             word.Clear(); meaning.Clear(); Save(); BuildVocabularyList(); status.Text = "单词已保存"; word.Focus();
         }
         panel.Children.Add(ActionButton("添加单词", (_, _) => Add()));

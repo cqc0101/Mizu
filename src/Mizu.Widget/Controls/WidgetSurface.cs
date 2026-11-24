@@ -30,6 +30,8 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
     public static readonly DependencyProperty VocabularyOffsetProperty = DependencyProperty.Register("VocabularyOffset", typeof(double),
         typeof(WidgetSurface), new FrameworkPropertyMetadata(0d, FrameworkPropertyMetadataOptions.AffectsRender));
     private double VocabularyOffset => (double)GetValue(VocabularyOffsetProperty);
+    private static readonly DependencyProperty VocabularyOpacityProperty = DependencyProperty.Register("VocabularyOpacity",
+        typeof(double), typeof(WidgetSurface), new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
     private double vocabularyScrollTarget;
     private int vocabularyScrollGeneration;
     private IReadOnlyList<VocabularyEntry>? drawnVocabularyOrder;
@@ -163,6 +165,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         double columnWidth = VocabularyColumnWidth(width, columns);
         double stride = columnWidth + WidgetLayout.VocabularyColumnGap;
         drawing.PushClip(new RectangleGeometry(new Rect(0, section.Top, width, section.Height)));
+        drawing.PushOpacity((double)GetValue(VocabularyOpacityProperty));
         for (int i = first * columns; i < end; i++)
         {
             var entry = vocabulary.Order[i];
@@ -174,9 +177,21 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
                     secondary, Dpi, width: columnWidth, weight: settings.TextWeight);
         }
         drawing.Pop();
+        drawing.Pop();
     }
 
-    private void SyncVocabularyOffset(bool snap = false)
+    internal void RevealLatestVocabulary()
+    {
+        if (!settings.ShowVocabulary) return;
+        var target = TargetLayout;
+        vocabulary.RevealLatest(settings, DateTimeOffset.Now, target.VocabularyRowLimit, target.VocabularyColumns);
+        drawnVocabularyOrder = vocabulary.Order;
+        HoverHints.Close(this);
+        SyncVocabularyOffset(snap: drawnVocabularyColumns != target.VocabularyColumns || !settings.SmoothResize, reveal: true);
+        InvalidateVisual();
+    }
+
+    private void SyncVocabularyOffset(bool snap = false, bool reveal = false)
     {
         double target = vocabulary.Offset;
         if (!ReferenceEquals(drawnVocabularyOrder, vocabulary.Order))
@@ -187,6 +202,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         if (!snap && target == vocabularyScrollTarget) return;
 
         double current = VocabularyOffset;
+        BeginAnimation(VocabularyOpacityProperty, null);
         vocabularyScrollTarget = target;
         int generation = ++vocabularyScrollGeneration;
         void Finish()
@@ -194,13 +210,29 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             if (generation != vocabularyScrollGeneration) return;
             SetValue(VocabularyOffsetProperty, target);
             BeginAnimation(VocabularyOffsetProperty, null);
+            BeginAnimation(VocabularyOpacityProperty, null);
         }
         if (snap || Math.Abs(current - target) < .001)
         {
             Finish();
             return;
         }
-        var animation = new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(170))
+        if (reveal && Math.Abs(current - target) > Math.Max(6, vocabulary.VisibleRowCount * 2))
+        {
+            var switchAt = TimeSpan.FromMilliseconds(95);
+            var duration = TimeSpan.FromMilliseconds(260);
+            var offset = new DoubleAnimationUsingKeyFrames { Duration = duration };
+            offset.KeyFrames.Add(new DiscreteDoubleKeyFrame(current, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            offset.KeyFrames.Add(new DiscreteDoubleKeyFrame(target, KeyTime.FromTimeSpan(switchAt)));
+            var fade = new DoubleAnimationUsingKeyFrames { Duration = duration };
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(switchAt)));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, KeyTime.FromTimeSpan(duration)));
+            fade.Completed += (_, _) => Finish();
+            BeginAnimation(VocabularyOffsetProperty, offset, HandoffBehavior.SnapshotAndReplace);
+            BeginAnimation(VocabularyOpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
+            return;
+        }
+        var animation = new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(reveal ? 235 : 170))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };

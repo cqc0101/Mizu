@@ -41,7 +41,14 @@ public sealed class VocabularyRotation
         Offset = Math.Clamp(start + movement, 0, MaximumOffset);
     }
 
-    private void ApplySettings(AppSettings settings, DateTimeOffset now, int rowLimit, int columnCount)
+    public void RevealLatest(AppSettings settings, DateTimeOffset now, int rowLimit, int columnCount)
+    {
+        ApplySettings(settings, now, rowLimit, columnCount, appendToEnd: true);
+        Offset = MaximumOffset;
+        deadline = now.AddMinutes(minutes);
+    }
+
+    private void ApplySettings(AppSettings settings, DateTimeOffset now, int rowLimit, int columnCount, bool appendToEnd = false)
     {
         int pageSize = Math.Clamp(settings.VocabularyVisibleRows, 1, rowLimit);
         bool orderChanged = random != settings.VocabularyRandom || !entries.SequenceEqual(settings.Vocabulary);
@@ -52,9 +59,18 @@ public sealed class VocabularyRotation
         columns = columnCount;
         if (orderChanged)
         {
-            entries = settings.Vocabulary.ToArray();
+            var updated = settings.Vocabulary.ToArray();
+            bool keepOrder = appendToEnd && random == settings.VocabularyRandom &&
+                updated.Length == entries.Length + 1 && updated.AsSpan(0, entries.Length).SequenceEqual(entries);
+            entries = updated;
             random = settings.VocabularyRandom;
-            RestartCycle();
+            if (keepOrder) order = random ? [.. order, entries[^1]] : entries;
+            else
+            {
+                RestartCycle();
+                if (appendToEnd && random && order.Length > 0 && order[^1] != entries[^1])
+                    order = [.. order.Where(entry => entry != entries[^1]), entries[^1]];
+            }
         }
         else if (sizeChanged) Offset = Math.Min(previousColumns == columns ? Offset : firstEntry / columns, MaximumOffset);
         if (orderChanged || sizeChanged || minutes != settings.VocabularyMinutes || enabled != settings.ShowVocabulary)
