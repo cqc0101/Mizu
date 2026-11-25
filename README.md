@@ -28,7 +28,7 @@
 
 ## 开始使用
 
-当前源码版本 **0.8.7 预览版**。[查看已发布的安装版或便携版](https://github.com/cqc0101/Mizu/releases)。
+当前源码版本 **0.8.8 预览版**。[查看已发布的安装版或便携版](https://github.com/cqc0101/Mizu/releases)。
 
 可选的 [Firebase 备份与恢复](docs/firebase-sync.md) 支持用自己的账号和 Firestore 保存待办、单词本与常用显示偏好。
 安装版运行对应的 `-setup.exe`；便携版完整解压，双击根目录 `Mizu.exe`。[安装与卸载说明](docs/installation.md)

@@ -117,7 +117,7 @@ public sealed class AppSettings
         VocabularyIntervalMinutes = VocabularyMinutes;
         VocabularyIntervalSeconds = VocabularyMinutes * 60;
         ThemeIntervalMinutes = Math.Clamp(ThemeIntervalMinutes, 1, 720);
-        Vocabulary = (Vocabulary ?? []).Where(w => w is not null && !string.IsNullOrWhiteSpace(w.Word)).Take(500).ToList();
+        Vocabulary = (Vocabulary ?? []).Where(w => w is not null && !string.IsNullOrWhiteSpace(w.Word)).Take(VocabularyImport.MaximumEntries).ToList();
         foreach (var entry in Vocabulary)
         {
             entry.Word = entry.Word.Trim()[..Math.Min(entry.Word.Trim().Length, 80)];

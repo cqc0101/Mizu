@@ -5,6 +5,8 @@ namespace Mizu.Core.Services;
 
 public static class VocabularyImport
 {
+    public const int MaximumEntries = 1500;
+
     public static IReadOnlyList<VocabularyEntry> Parse(string text, string extension)
     {
         if (text.Length > 4 * 1024 * 1024) throw new FormatException("文件最多 4 MB");
@@ -36,7 +38,7 @@ public static class VocabularyImport
     {
         word = word.Trim(); meaning = meaning.Trim();
         if (!ValidateEntry(settings, word, meaning, null, out message)) return false;
-        if (settings.Vocabulary.Count >= 500) { message = "最多保存 500 个单词"; return false; }
+        if (settings.Vocabulary.Count >= MaximumEntries) { message = $"最多保存 {MaximumEntries} 个单词"; return false; }
         settings.Vocabulary.Add(new() { Word = word, Meaning = meaning }); message = "单词已保存"; return true;
     }
 

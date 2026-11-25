@@ -109,7 +109,7 @@ public sealed record SyncSnapshot(SyncAppearance Appearance, SyncDisplay Display
             Display.TodoRows is < 1 or > 8 || Display.WordRows is < 1 or > WidgetLayout.MaximumVocabularyRows ||
             Display.WordColumns is < 1 or > WidgetLayout.MaximumVocabularyColumns || Display.WordSpacing is < 0 or > 40 ||
             Display.MeaningFontSize is < AppSettings.MinimumVocabularyMeaningFontSize or > AppSettings.MaximumVocabularyMeaningFontSize ||
-            Display.WordMinutes is < 1 or > 720 || Todos.Length > 200 || Words.Length > 500 ||
+            Display.WordMinutes is < 1 or > 720 || Todos.Length > 200 || Words.Length > VocabularyImport.MaximumEntries ||
             Todos.Any(t => t is null || string.IsNullOrWhiteSpace(t.Id) || t.Id.Length > 128 || !ValidText(t.Text, 160)) ||
             Todos.Select(t => t.Id).Distinct().Count() != Todos.Length ||
             Words.Any(w => w is null || !ValidText(w.Word, 80) || w.Meaning is null || w.Meaning.Length > 200))

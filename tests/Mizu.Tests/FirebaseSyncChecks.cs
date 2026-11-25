@@ -53,6 +53,27 @@ internal static class FirebaseSyncChecks
         Check(destination.Theme == "navy" && destination.Todos[0].Id == "todo-1" && destination.Todos[0].Completed &&
             destination.VocabularyColumns == 4 && destination.Vocabulary[0].Meaning == "宁静", "Lists and display preferences transfer");
         Check(SyncSnapshot.Capture(destination).Encode().SequenceEqual(data), "A valid snapshot has a stable hash after application");
+        var largeBook = new AppSettings();
+        var rows = Enumerable.Range(1, 1500).Select(index => $"word-{index},示例释义");
+        var imported = VocabularyImport.Parse("word,meaning\n" + string.Join("\n", rows), ".csv");
+        int importedCount = 0;
+        foreach (var word in imported)
+            if (VocabularyImport.TryAdd(largeBook, word.Word, word.Meaning, out _)) importedCount++;
+        Check(importedCount == 1500, "Import accepts 1500 words");
+        Check(!VocabularyImport.TryAdd(largeBook, "overflow", "", out string limitMessage) &&
+            limitMessage.Contains("1500"), "The 1501st word is rejected");
+        var reloadedBook = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(largeBook))!;
+        reloadedBook.Validate();
+        Check(reloadedBook.Vocabulary.Count == 1500, "Loading desktop settings retains all 1500 words");
+        var largeSnapshot = SyncSnapshot.Capture(reloadedBook);
+        var wire = largeSnapshot.Encode();
+        var recovered = new AppSettings();
+        SyncSnapshot.Decode(wire).ApplyTo(recovered);
+        recovered.Validate();
+        Check(recovered.Vocabulary.Count == 1500 && recovered.Vocabulary[^1].Word == "word-1500",
+            "A cloud backup can restore all 1500 words");
+        Reject<InvalidDataException>(() => (largeSnapshot with { Words = [.. largeSnapshot.Words, new SyncWord("overflow", "")] }).Encode(),
+            "A cloud backup rejects more than 1500 words");
         Reject<JsonException>(() => SyncSnapshot.Decode("{}"u8), "Incomplete snapshots must be rejected");
         Reject<InvalidDataException>(() => (snapshot with { Display = snapshot.Display with { WordColumns = 99 } }).Encode(), "Invalid layout values must be rejected");
         Check(SyncSnapshot.DecideUpload("a", null, null) == CloudUploadDecision.Upload &&

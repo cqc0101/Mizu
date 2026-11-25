@@ -508,7 +508,7 @@ public sealed partial class SettingsWindow : Window
             var entries = VocabularyImport.Parse(File.ReadAllText(dialog.FileName), Path.GetExtension(dialog.FileName));
             int added = 0;
             foreach (var entry in entries) if (VocabularyImport.TryAdd(settings, entry.Word, entry.Meaning ?? "", out _)) added++;
-            Save(); status.Text = $"已导入 {added} 个，跳过重复、超长或超出容量的 {entries.Count - added} 个；最多保存 500 个";
+            Save(); status.Text = $"已导入 {added} 个，跳过重复、超长或超出容量的 {entries.Count - added} 个；最多保存 {VocabularyImport.MaximumEntries} 个";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException or JsonException or Microsoft.VisualBasic.FileIO.MalformedLineException)
         { status.Text = "导入失败：" + ex.Message; }
