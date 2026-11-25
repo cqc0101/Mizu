@@ -724,7 +724,7 @@ dialog.Close(); main.Hide();
 var lookupSettings = new AppSettings
 {
     Theme = "navy", Scale = .68, ShowVocabulary = false, ShowTodo = false,
-    Vocabulary = [new() { Word = "serene", Meaning = "平静的" }]
+    Vocabulary = [new() { Word = "serene", Meaning = "平静的" }, new() { Word = "tranquil", Meaning = "宁静" }]
 };
 var lookupMain = new MainWindow(lookupSettings, WidgetState.Preview(), preview: true, persistSettings: false);
 lookupMain.Show(); lookupMain.Activate(); Pump(320);
@@ -769,6 +769,54 @@ Check(!lookup.IsOpen && lookupMain.IsVisible, "Escape dismisses lookup and keeps
 lookupButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(30);
 lookupSettings.PanelLocked = true; lookupMain.ApplySettings();
 Check(!lookup.IsOpen && lookupButton.Visibility == Visibility.Collapsed, "Locking the widget dismisses and hides lookup");
+lookupMain.OpenSettings(); Pump(50);
+var lookupSettingsWindow = app.Windows.OfType<SettingsWindow>().Single();
+var lookupTabs = Desc<TabControl>(lookupSettingsWindow).Single();
+lookupTabs.SelectedItem = lookupTabs.Items.OfType<TabItem>().Single(tab => tab.Header is TextBlock { Text: "单词本" });
+lookupSettingsWindow.UpdateLayout();
+var savedWordBox = Desc<TextBox>(lookupSettingsWindow).Single(box => box.Text == "serene");
+lookupMain.Activate();
+lookupButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(60);
+lookupInput.Text = "meticulous"; Pump(25);
+var spellingRow = Desc<Border>(lookup.Child).Single(row => row.Child is StackPanel body &&
+    body.Children[0] is DockPanel heading && Desc<TextBlock>(heading).Any(block => block.Text == "meticulous"));
+void RightClick(FrameworkElement element) => element.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Right)
+    { RoutedEvent = UIElement.MouseRightButtonUpEvent });
+Window? WordEditor() => app.Windows.OfType<Window>().SingleOrDefault(window => window.Title == "编辑单词");
+RightClick(spellingRow);
+Check(WordEditor() is null, "A built-in spelling row has no edit action");
+lookupInput.Text = "serene"; Pump(25);
+RightClick(Desc<Border>(lookup.Child).Single(row => System.Windows.Automation.AutomationProperties.GetHelpText(row) == "右键编辑"));
+Pump(85);
+var editWindow = WordEditor()!;
+var editBoxes = Desc<TextBox>(editWindow).ToArray();
+Check(editBoxes[0].Text == "serene" && editBoxes[1].Text == "平静，安宁" && !lookup.IsOpen,
+    "Right-clicking a saved lookup result opens a prefilled editor");
+var saveWordEdit = Desc<Button>(editWindow).Single(button => Equals(button.Content, "保存"));
+editBoxes[0].Text = " TRANQUIL ";
+editBoxes[1].Text = "沉静";
+saveWordEdit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(WordEditor() == editWindow && lookupSettings.Vocabulary[0].Word == "serene" &&
+    Desc<TextBlock>(editWindow).Any(text => text.Text == "单词已存在"), "The editor keeps the draft and reports a duplicate");
+editBoxes[0].Text = "placid";
+saveWordEdit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(60);
+Check(WordEditor() is null && lookupSettings.Vocabulary[0].Word == "placid" && savedWordBox.Text == "placid" &&
+    Desc<TextBox>(lookupSettingsWindow).Any(box => box.Text == "沉静"), "Saving updates the shared entry and its existing settings controls");
+lookupSettingsWindow.Close();
+lookupSettings.ShowVocabulary = true; lookupMain.ApplySettings(); Pump(330);
+var wordHit = typeof(WidgetSurface).GetMethod("VocabularyEntryAt", BindingFlags.Instance | BindingFlags.NonPublic)!;
+var visibleWords = lookupMain.Surface.Layout.Sections.Single(section => section.Kind == WidgetSection.Vocabulary);
+var wordPoint = new Point(WidgetLayout.VocabularyInset + 6, visibleWords.Top + 5);
+var wordUnderPointer = (VocabularyEntry)wordHit.Invoke(lookupMain.Surface, [wordPoint])!;
+Check(ReferenceEquals(wordUnderPointer, lookupSettings.Vocabulary[0]), "The widget identifies the saved word in the visible cell");
+typeof(MainWindow).GetMethod("OpenVocabularyEditor", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(lookupMain, [wordUnderPointer]);
+Pump(50);
+var cancelEdit = WordEditor()!;
+Desc<TextBox>(cancelEdit).First().Text = "unused draft";
+Desc<Button>(cancelEdit).Single(button => Equals(button.Content, "取消")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(WordEditor() is null && lookupSettings.Vocabulary[0].Word == "placid", "Cancel discards the draft");
+lookupSettings.PanelLocked = true; lookupMain.ApplySettings();
+Check(wordHit.Invoke(lookupMain.Surface, [wordPoint]) is null, "A locked widget offers no word edit target");
 lookupMain.Hide();
 Console.WriteLine($"PASS {checks} WPF checks: rounded alpha, hover hit targets, todo add/complete, reflow, lookup, settings and hardware history. No driver installed.");app.Shutdown();return 0;
 }

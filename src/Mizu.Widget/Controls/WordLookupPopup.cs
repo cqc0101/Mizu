@@ -14,6 +14,7 @@ internal sealed class WordLookupPopup : Popup
 {
     private const string ScrollThumbResource = "WordLookupScrollThumb";
     private readonly AppSettings settings;
+    private readonly Action<VocabularyEntry> edit;
     private readonly Border card;
     private readonly Border searchField;
     private readonly TextBox query;
@@ -26,9 +27,10 @@ internal sealed class WordLookupPopup : Popup
     private IReadOnlyList<LocalWordMatch> matches = [];
     private string? previousQuery;
 
-    public WordLookupPopup(AppSettings settings, FrameworkElement anchor)
+    public WordLookupPopup(AppSettings settings, FrameworkElement anchor, Action<VocabularyEntry> edit)
     {
         this.settings = settings;
+        this.edit = edit;
         PlacementTarget = anchor;
         Placement = PlacementMode.Custom;
         CustomPopupPlacementCallback = (popup, target, _) =>
@@ -167,7 +169,7 @@ internal sealed class WordLookupPopup : Popup
         return style;
     }
 
-    private static Border ResultRow(LocalWordMatch match, ThemePalette palette, bool separator)
+    private Border ResultRow(LocalWordMatch match, ThemePalette palette, bool separator)
     {
         var heading = new DockPanel();
         if (!match.Saved)
@@ -184,7 +186,20 @@ internal sealed class WordLookupPopup : Popup
         if (!string.IsNullOrWhiteSpace(match.Meaning))
             body.Children.Add(new TextBlock { Text = match.Meaning, FontSize = 12, Foreground = Art.Brush(palette.Text),
                 TextWrapping = TextWrapping.Wrap, Margin = new(0, 2, 0, 0) });
-        return new Border { Child = body, Padding = new(7, 8, 7, 8), BorderBrush = Art.Brush(palette.Line),
+        var row = new Border { Child = body, Padding = new(7, 8, 7, 8), BorderBrush = Art.Brush(palette.Line),
             BorderThickness = new(0, separator ? 1 : 0, 0, 0) };
+        if (match.Saved)
+        {
+            row.Background = Brushes.Transparent;
+            AutomationProperties.SetHelpText(row, "右键编辑");
+            row.MouseRightButtonUp += (_, e) =>
+            {
+                var entry = settings.Vocabulary.FirstOrDefault(word => word.Word == match.Word);
+                if (entry is null) return;
+                e.Handled = true;
+                edit(entry);
+            };
+        }
+        return row;
     }
 }

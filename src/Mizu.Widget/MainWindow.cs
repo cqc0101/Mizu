@@ -52,6 +52,7 @@ public sealed class MainWindow : Window
     private SettingsWindow? settingsWindow;
     private HardwareHistoryWindow? historyWindow;
     private WordLookupPopup? wordLookup;
+    private VocabularyEditWindow? vocabularyEditor;
     private bool quitting;
     private IntPtr hidNotification;
     private HashSet<string> onlineDevices = [];
@@ -142,11 +143,18 @@ public sealed class MainWindow : Window
         {
             if (IsVisible) return;
             CloseWordLookup();
+            vocabularyEditor?.Close();
             todoHideDelay.Stop();
             AnimateTodoFooter(false, false);
         };
         MouseEnter += (_, _) => SetHover(true);
         MouseLeave += (_, _) => SetHover(false);
+        Surface.MouseRightButtonUp += (_, e) =>
+        {
+            if (Surface.VocabularyEntryAt(e.GetPosition(Surface)) is not { } entry) return;
+            e.Handled = true;
+            OpenVocabularyEditor(entry);
+        };
         PreviewMouseLeftButtonDown += (_, e) =>
         {
             if (e.OriginalSource is DependencyObject source && IsInteractive(source)) return;
@@ -205,7 +213,7 @@ public sealed class MainWindow : Window
         if (!IsVisible || Settings.PanelLocked || Settings.ClickThrough) return;
         if (wordLookup is null)
         {
-            wordLookup = new(Settings, toolbar);
+            wordLookup = new(Settings, toolbar, OpenVocabularyEditor);
             wordLookup.Opened += (_, _) => SetToolbarHover(true);
             wordLookup.Closed += (_, _) => SetToolbarHover(IsVisible && IsMouseOver);
         }
@@ -215,6 +223,16 @@ public sealed class MainWindow : Window
     private void CloseWordLookup()
     {
         if (wordLookup is { IsOpen: true } popup) popup.IsOpen = false;
+    }
+    private void OpenVocabularyEditor(VocabularyEntry entry)
+    {
+        if (!IsVisible || Settings.PanelLocked || Settings.ClickThrough || !Settings.Vocabulary.Contains(entry)) return;
+        CloseWordLookup();
+        HoverHints.Close(Surface);
+        if (vocabularyEditor is { } current) { current.Activate(); return; }
+        vocabularyEditor = new(this, entry);
+        vocabularyEditor.Closed += (_, _) => vocabularyEditor = null;
+        vocabularyEditor.Show();
     }
     private void OnStateChanged()
     {
@@ -445,7 +463,11 @@ public sealed class MainWindow : Window
         var key = $"{Settings.ShowTodo}|{Settings.ShowVocabulary}|{calculated.Height}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
         if (key != todoKey) { BuildTodo(calculated); todoKey = key; }
         ApplyPanelLock();
-        if (Settings.PanelLocked || Settings.ClickThrough) CloseWordLookup();
+        if (Settings.PanelLocked || Settings.ClickThrough)
+        {
+            CloseWordLookup();
+            vocabularyEditor?.Close();
+        }
         else wordLookup?.Refresh();
         UpdateSectionControls();
         Surface.InvalidateVisual(); NativeWindow.Apply(this, Settings);
@@ -688,6 +710,25 @@ public sealed class MainWindow : Window
     {
         if (!VocabularyImport.TryAdd(Settings, word, meaning, out message)) return false;
         Surface.RevealLatestVocabulary();
+        return true;
+    }
+    internal bool TryEditVocabulary(VocabularyEntry entry, string word, string meaning, out string message)
+    {
+        var (originalWord, originalMeaning) = (entry.Word, entry.Meaning);
+        if (!VocabularyImport.TryEdit(Settings, entry, word, meaning, out message)) return false;
+        try
+        {
+            if (persistSettings) store.Save(Settings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            (entry.Word, entry.Meaning) = (originalWord, originalMeaning);
+            AppLog.Write("vocabulary.edit", ex.GetType().Name);
+            message = "无法保存修改，请重试";
+            return false;
+        }
+        settingsWindow?.RefreshVocabularyEntry(entry);
+        ApplySettings();
         return true;
     }
     private void AddTodo(TextBox input)

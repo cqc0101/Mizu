@@ -24,7 +24,7 @@ public sealed partial class SettingsWindow : Window
     private readonly StackPanel deviceList = new();
     private readonly StackPanel todoList = new();
     private readonly StackPanel vocabularyList = new();
-    private readonly Dictionary<VocabularyEntry, Grid> vocabularyRows = new();
+    private readonly Dictionary<VocabularyEntry, (Grid Row, TextBox Word, TextBox Meaning)> vocabularyRows = new();
     private Slider? vocabularyRowsSlider;
     private TextBlock? vocabularyCapacity;
     private bool syncingVocabularyRows;
@@ -538,20 +538,27 @@ public sealed partial class SettingsWindow : Window
         for (int index = common; index < entries.Count; index++)
         {
             var entry = entries[index];
-            if (!vocabularyRows.TryGetValue(entry, out var row))
+            if (!vocabularyRows.TryGetValue(entry, out var fields))
             {
-                row = CreateVocabularyRow(entry);
-                vocabularyRows.Add(entry, row);
-                rows.Insert(index, row);
+                fields = CreateVocabularyRow(entry);
+                vocabularyRows.Add(entry, fields);
+                rows.Insert(index, fields.Row);
             }
-            else if (index >= rows.Count || !ReferenceEquals(rows[index], row))
+            else if (index >= rows.Count || !ReferenceEquals(rows[index], fields.Row))
             {
-                rows.Remove(row);
-                rows.Insert(index, row);
+                rows.Remove(fields.Row);
+                rows.Insert(index, fields.Row);
             }
         }
     }
-    private Grid CreateVocabularyRow(VocabularyEntry entry)
+    internal void RefreshVocabularyEntry(VocabularyEntry entry)
+    {
+        if (!vocabularyRows.TryGetValue(entry, out var fields)) return;
+        if (fields.Word.Text != entry.Word) fields.Word.Text = entry.Word;
+        if (fields.Meaning.Text != entry.Meaning) fields.Meaning.Text = entry.Meaning;
+    }
+
+    private (Grid Row, TextBox Word, TextBox Meaning) CreateVocabularyRow(VocabularyEntry entry)
     {
         var row = new Grid { Tag = entry, Margin = new(0, 6, 0, 6) };
         row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = new(44) });
@@ -586,7 +593,7 @@ public sealed partial class SettingsWindow : Window
         delete.VerticalAlignment = VerticalAlignment.Center;
         HoverHints.Set(delete, "删除单词"); System.Windows.Automation.AutomationProperties.SetName(delete, "删除单词");
         Grid.SetColumn(delete, 1); row.Children.Add(delete);
-        return row;
+        return (row, word, meaning);
     }
     private void ExportVocabulary()
     {

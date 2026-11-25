@@ -35,10 +35,28 @@ public static class VocabularyImport
     public static bool TryAdd(AppSettings settings, string word, string meaning, out string message)
     {
         word = word.Trim(); meaning = meaning.Trim();
-        if (word.Length == 0) { message = "请先输入单词"; return false; }
-        if (word.Length > 80 || meaning.Length > 200) { message = "单词最多 80 字符，释义最多 200 字符"; return false; }
-        if (settings.Vocabulary.Any(w => w.Word.Equals(word, StringComparison.OrdinalIgnoreCase))) { message = "单词已存在"; return false; }
+        if (!ValidateEntry(settings, word, meaning, null, out message)) return false;
         if (settings.Vocabulary.Count >= 500) { message = "最多保存 500 个单词"; return false; }
         settings.Vocabulary.Add(new() { Word = word, Meaning = meaning }); message = "单词已保存"; return true;
+    }
+
+    public static bool TryEdit(AppSettings settings, VocabularyEntry entry, string word, string meaning, out string message)
+    {
+        word = word.Trim(); meaning = meaning.Trim();
+        if (!settings.Vocabulary.Contains(entry)) { message = "这条单词已从单词本移除"; return false; }
+        if (!ValidateEntry(settings, word, meaning, entry, out message)) return false;
+        entry.Word = word;
+        entry.Meaning = meaning;
+        message = "修改已保存";
+        return true;
+    }
+
+    private static bool ValidateEntry(AppSettings settings, string word, string meaning, VocabularyEntry? editing, out string message)
+    {
+        if (word.Length == 0) { message = "请先输入单词"; return false; }
+        if (word.Length > 80 || meaning.Length > 200) { message = "单词最多 80 字符，释义最多 200 字符"; return false; }
+        if (settings.Vocabulary.Any(w => w != editing && w.Word.Equals(word, StringComparison.OrdinalIgnoreCase))) { message = "单词已存在"; return false; }
+        message = "";
+        return true;
     }
 }

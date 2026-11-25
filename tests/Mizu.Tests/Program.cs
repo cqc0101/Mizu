@@ -231,6 +231,17 @@ Check(bundledLookup.Any(match => match.Word == "meticulous" && !match.Saved && m
     bundledLookup.Count <= 8, "Built-in prefix results are bounded and do not include definitions");
 Check(LocalWordSearch.Find(lookupEntries, "   ").Count == 0 &&
     LocalWordSearch.Find(lookupEntries, "zzz__no_match").Count == 0, "Blank and unmatched queries return no results");
+var editing = new AppSettings { Vocabulary = lookupEntries.ToList() };
+var edited = editing.Vocabulary[1];
+Check(!VocabularyImport.TryEdit(editing, edited, " SERENITY ", "覆盖", out var editMessage) &&
+    editMessage == "单词已存在" && edited.Word == "serene" && edited.Meaning == "平静的",
+    "A duplicate rename leaves both original fields intact");
+Check(VocabularyImport.TryEdit(editing, edited, " Serene ", "  宁静的  ", out _) &&
+    ReferenceEquals(editing.Vocabulary[1], edited) && edited.Word == "Serene" && edited.Meaning == "宁静的",
+    "Editing trims input and keeps the existing word in its position");
+editing.Vocabulary.Remove(edited);
+Check(!VocabularyImport.TryEdit(editing, edited, "calm", "平静", out _) &&
+    !editing.Vocabulary.Contains(edited), "A stale edit cannot restore a deleted word");
 pagingSettings.VocabularyRandom = false;
 pagingSettings.VocabularyVisibleRows = 3;
 multiColumnPaging.Update(pagingSettings, now, 2, 3);

@@ -226,6 +226,14 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
         return true;
     }
 
+    internal VocabularyEntry? VocabularyEntryAt(Point point)
+    {
+        if (settings.PanelLocked || settings.ClickThrough) return null;
+        var layout = Layout;
+        var words = layout.Sections.FirstOrDefault(section => section.Kind == WidgetSection.Vocabulary);
+        return words is null ? null : VocabularyCellAt(point, words, layout.Width)?.Entry;
+    }
+
     internal void StopVocabularySpeech() => wordSpeech.Dispose();
 
     internal void RevealLatestVocabulary()
@@ -569,7 +577,7 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             else
             {
                 var word = hovered.Entry;
-                tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮滚动单词";
+                tip = word.Word + (settings.VocabularyHideMeaning ? "" : "\n" + word.Meaning) + "\n滚轮滚动 · 右键编辑";
             }
         }
         if (area?.Kind == WidgetSection.Media) tip = $"{state.Media.Title}\n{state.Media.Artist}\n{state.Media.Status}";
