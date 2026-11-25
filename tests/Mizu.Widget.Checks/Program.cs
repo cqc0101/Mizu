@@ -720,7 +720,57 @@ Check(pausedTimelineAdvances, "Paused recording advances the displayed time wind
 Check(compactFooterReachable, "An undersized history viewport can scroll the footer into view");
 Check(shortPauseStaysBlank, "A short recording pause has no interpolated line or area fill");
 Check(hiddenMetricReplaced, "Closing an empty selected metric switches to a visible metric");
-dialog.Close();main.Hide();Console.WriteLine($"PASS {checks} WPF checks: rounded alpha, hover hit targets, todo add/complete, reflow, settings and hardware history. No driver installed.");app.Shutdown();return 0;
+dialog.Close(); main.Hide();
+var lookupSettings = new AppSettings
+{
+    Theme = "navy", Scale = .68, ShowVocabulary = false, ShowTodo = false,
+    Vocabulary = [new() { Word = "serene", Meaning = "平静的" }]
+};
+var lookupMain = new MainWindow(lookupSettings, WidgetState.Preview(), preview: true, persistSettings: false);
+lookupMain.Show(); lookupMain.Activate(); Pump(320);
+var lookupButton = Desc<Button>(lookupMain).Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "本地查词");
+var lookupToolbar = (StackPanel)lookupButton.Parent;
+Check(lookupToolbar.Children[0] == lookupButton && lookupButton.Width == ((Button)lookupToolbar.Children[1]).Width,
+    "The search button sits first and matches the size of the toolbar actions");
+double lookupHeight = lookupMain.Height;
+lookupButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(70);
+var lookup = (System.Windows.Controls.Primitives.Popup)typeof(MainWindow).GetField("wordLookup", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lookupMain)!;
+var lookupInput = Desc<TextBox>(lookup.Child).Single();
+Check(lookup.IsOpen && lookupInput.IsKeyboardFocused && lookupMain.Height == lookupHeight,
+    $"Opening lookup focuses its query without resizing the widget (open: {lookup.IsOpen}, focused: {lookupInput.IsKeyboardFocused}, height: {lookupHeight:F2} → {lookupMain.Height:F2})");
+var cardRight = lookup.Child.PointToScreen(new Point(((FrameworkElement)lookup.Child).ActualWidth, 0));
+var toolbarRight = lookupToolbar.PointToScreen(new Point(lookupToolbar.ActualWidth, lookupToolbar.ActualHeight));
+Check(Math.Abs(cardRight.X - toolbarRight.X) < 3 && cardRight.Y > toolbarRight.Y,
+    $"The right-aligned lookup sits under the scaled toolbar (card X: {cardRight.X:F1}, toolbar X: {toolbarRight.X:F1})");
+lookupInput.Text = "平静"; Pump(30);
+Check(Desc<TextBlock>(lookup.Child).Any(block => block.Text == "serene") &&
+    Desc<TextBlock>(lookup.Child).Any(block => block.Text == "平静的"), "A Chinese query finds the local word and its saved meaning");
+lookupSettings.Vocabulary[0].Meaning = "平静，安宁"; lookupMain.ApplySettings(); Pump(35);
+Check(Desc<TextBlock>(lookup.Child).Any(block => block.Text == "平静，安宁"), "Open lookup reflects saved edits without reopening");
+lookupInput.Text = "meticulous"; Pump(35);
+Check(Desc<TextBlock>(lookup.Child).Any(block => block.Text == "内置词库仅提供拼写"), "Built-in spelling results show their source");
+lookupInput.Text = "___no_match"; Pump(25);
+Check(Desc<TextBlock>(lookup.Child).Any(block => block.Text == "未找到本地词条"), "Unmatched queries show a clear empty state");
+lookupInput.Text = "seren"; Pump(100);
+lookupSettings.Theme = "pink"; lookupMain.ApplySettings(); Pump(30);
+Check(((SolidColorBrush)((Border)lookup.Child).Background).Color.R > 230 && lookupInput.Text == "seren",
+    "An open lookup follows a theme change without discarding the search");
+lookupSettings.Theme = "navy"; lookupMain.ApplySettings(); Pump(30);
+if (Environment.GetEnvironmentVariable("MIZU_LOOKUP_RENDER") is { Length: > 0 } lookupImage)
+{
+    var png = new PngBitmapEncoder();
+    png.Frames.Add(BitmapFrame.Create(Capture((FrameworkElement)lookup.Child)));
+    using var output = System.IO.File.Create(lookupImage);
+    png.Save(output);
+}
+lookupInput.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(lookupInput), 0, Key.Escape) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+Pump(30);
+Check(!lookup.IsOpen && lookupMain.IsVisible, "Escape dismisses lookup and keeps the widget visible");
+lookupButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(30);
+lookupSettings.PanelLocked = true; lookupMain.ApplySettings();
+Check(!lookup.IsOpen && lookupButton.Visibility == Visibility.Collapsed, "Locking the widget dismisses and hides lookup");
+lookupMain.Hide();
+Console.WriteLine($"PASS {checks} WPF checks: rounded alpha, hover hit targets, todo add/complete, reflow, lookup, settings and hardware history. No driver installed.");app.Shutdown();return 0;
 }
 }
 

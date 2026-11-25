@@ -214,6 +214,23 @@ Check(EnglishLexicon.Contains(" serene ") && EnglishLexicon.Contains("METICULOUS
     EnglishLexicon.Contains("don’t"), "The bundled English dictionary recognizes known spellings and apostrophe variants");
 Check(!EnglishLexicon.Contains("sernee") && !EnglishLexicon.Contains("你好") &&
     !EnglishLexicon.Contains("route reflector") && !EnglishLexicon.Contains("bgp"), "Unknown words and unsupported phrases do not offer pronunciation");
+VocabularyEntry[] lookupEntries =
+[
+    new() { Word = "serenity", Meaning = "宁静" },
+    new() { Word = "serene", Meaning = "平静的" },
+    new() { Word = "don’t", Meaning = "不要" },
+    new() { Word = "route reflector", Meaning = "路由反射器" }
+];
+var savedLookup = LocalWordSearch.Find(lookupEntries, " SERENE ");
+Check(savedLookup[0] == new LocalWordMatch("serene", "平静的", true) &&
+    savedLookup.Count(match => match.Word == "serene") == 1, "Exact saved words rank first and do not repeat in built-in results");
+Check(LocalWordSearch.Find(lookupEntries, "路由").Single().Word == "route reflector" &&
+    LocalWordSearch.Find(lookupEntries, "don't")[0].Saved, "Local lookup supports Chinese meanings and apostrophe variants");
+var bundledLookup = LocalWordSearch.Find([], "meticul");
+Check(bundledLookup.Any(match => match.Word == "meticulous" && !match.Saved && match.Meaning is null) &&
+    bundledLookup.Count <= 8, "Built-in prefix results are bounded and do not include definitions");
+Check(LocalWordSearch.Find(lookupEntries, "   ").Count == 0 &&
+    LocalWordSearch.Find(lookupEntries, "zzz__no_match").Count == 0, "Blank and unmatched queries return no results");
 pagingSettings.VocabularyRandom = false;
 pagingSettings.VocabularyVisibleRows = 3;
 multiColumnPaging.Update(pagingSettings, now, 2, 3);

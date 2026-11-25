@@ -36,6 +36,7 @@ public static class Art
             case "play": d.DrawGeometry(brush, null, Geometry.Parse("M 7,4 L 20,12 7,20 Z")); break;
             case "pause": L(8,5,8,19); L(16,5,16,19); break;
             case "plus": L(12, 5, 12, 19); L(5, 12, 19, 12); break;
+            case "search": d.DrawEllipse(null, p, new(10.5, 10.5), 6.5, 6.5); L(15.3, 15.3, 21, 21); break;
             case "settings":
                 d.DrawEllipse(null, p, new(12, 12), 4, 4);
                 for (int i = 0; i < 8; i++) { var a = i * Math.PI / 4; L(12 + 8 * Math.Cos(a), 12 + 8 * Math.Sin(a), 12 + 10 * Math.Cos(a), 12 + 10 * Math.Sin(a)); }

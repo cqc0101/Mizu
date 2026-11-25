@@ -8,25 +8,42 @@ public static class EnglishLexicon
 
     public static bool Contains(string word)
     {
-        var text = word.AsSpan().Trim();
-        if (text.Length == 0 || text.Length > 80) return false;
-        if (text.Contains('’')) text = text.ToString().Replace('’', '\'');
-        foreach (char c in text)
-            if (!(char.IsAsciiLetter(c) || c is '\'' or '-')) return false;
+        var text = Normalize(word);
+        if (text.IsEmpty) return false;
 
         var table = Words.Value;
-        int first = 0, last = table.Starts.Length - 2;
-        while (first <= last)
+        int index = table.LowerBound(text);
+        return index < table.Count && text.Equals(table.At(index), StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static IReadOnlyList<string> FindByPrefix(string prefix, int limit)
+    {
+        var text = Normalize(prefix);
+        if (text.IsEmpty || limit <= 0) return [];
+
+        var table = Words.Value;
+        int first = table.LowerBound(text);
+        if (text.Length == 1)
+            return first < table.Count && text.Equals(table.At(first), StringComparison.OrdinalIgnoreCase)
+                ? [table.At(first).ToString()] : [];
+
+        var matches = new List<string>();
+        for (int index = first; index < table.Count && matches.Count < limit; index++)
         {
-            int middle = first + (last - first) / 2;
-            int start = table.Starts[middle];
-            var entry = table.Text.AsSpan(start, table.Starts[middle + 1] - start - 1);
-            int comparison = text.CompareTo(entry, StringComparison.OrdinalIgnoreCase);
-            if (comparison == 0) return true;
-            if (comparison < 0) last = middle - 1;
-            else first = middle + 1;
+            var word = table.At(index);
+            if (!word.StartsWith(text, StringComparison.OrdinalIgnoreCase)) break;
+            matches.Add(word.ToString());
         }
-        return false;
+        return matches;
+    }
+
+    private static ReadOnlySpan<char> Normalize(string word)
+    {
+        var text = word.AsSpan().Trim();
+        if (text.Length > 80) return [];
+        foreach (char c in text)
+            if (!(char.IsAsciiLetter(c) || c is '\'' or '’' or '-')) return [];
+        return text.Contains('’') ? text.ToString().Replace('’', '\'') : text;
     }
 
     private static WordTable Load()
@@ -45,5 +62,21 @@ public static class EnglishLexicon
         return new(text, starts);
     }
 
-    private sealed record WordTable(string Text, int[] Starts);
+    private sealed record WordTable(string Text, int[] Starts)
+    {
+        public int Count => Starts.Length - 1;
+        public ReadOnlySpan<char> At(int index) => Text.AsSpan(Starts[index], Starts[index + 1] - Starts[index] - 1);
+
+        public int LowerBound(ReadOnlySpan<char> text)
+        {
+            int first = 0, end = Count;
+            while (first < end)
+            {
+                int middle = first + (end - first) / 2;
+                if (At(middle).CompareTo(text, StringComparison.OrdinalIgnoreCase) < 0) first = middle + 1;
+                else end = middle;
+            }
+            return first;
+        }
+    }
 }

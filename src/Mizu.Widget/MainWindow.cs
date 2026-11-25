@@ -51,6 +51,7 @@ public sealed class MainWindow : Window
     private Border? todoEditor;
     private SettingsWindow? settingsWindow;
     private HardwareHistoryWindow? historyWindow;
+    private WordLookupPopup? wordLookup;
     private bool quitting;
     private IntPtr hidNotification;
     private HashSet<string> onlineDevices = [];
@@ -83,6 +84,7 @@ public sealed class MainWindow : Window
         layout.Children.Add(todoEditorHost);
         layout.Children.Add(mediaHost);
         toolbar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new(0, 5, 24, 0), Opacity = 0, IsHitTestVisible = false };
+        toolbar.Children.Add(IconButton("search", "本地查词", ToggleWordLookup));
         toolbar.Children.Add(IconButton("refresh", "刷新 · F5", async () => { await RefreshAsync(); }));
         toolbar.Children.Add(IconButton("pin", "切换置顶", () => { Settings.AlwaysOnTop = !Settings.AlwaysOnTop; ApplySettings(); SaveSettings(); }));
         toolbar.Children.Add(IconButton("settings", "设置 · Ctrl+,", OpenSettings));
@@ -129,13 +131,20 @@ public sealed class MainWindow : Window
         };
         LocationChanged += (_, _) => QueueWorkAreaRefresh();
         DpiChanged += (_, _) => QueueWorkAreaRefresh();
+        Deactivated += (_, _) => CloseWordLookup();
         displayTimer.Tick += (_, _) => {
             if (themeRotation.Update(Settings, DateTimeOffset.UtcNow, ThemePalette.All.Select(p => p.Id))) { ApplySettings(); SaveSettings(); }
             if (IsVisible && Settings.ShowDevices) OnStateChanged();
             else if (IsVisible && (Settings.ShowClock || Settings.ShowVocabulary)) Surface.InvalidateVisual();
         };
         todoHideDelay.Tick += (_, _) => { todoHideDelay.Stop(); if (!IsMouseOver && todoEditor?.IsKeyboardFocusWithin != true) AnimateTodoFooter(false); };
-        IsVisibleChanged += (_, _) => { if (!IsVisible) { todoHideDelay.Stop(); AnimateTodoFooter(false, false); } };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) return;
+            CloseWordLookup();
+            todoHideDelay.Stop();
+            AnimateTodoFooter(false, false);
+        };
         MouseEnter += (_, _) => SetHover(true);
         MouseLeave += (_, _) => SetHover(false);
         PreviewMouseLeftButtonDown += (_, e) =>
@@ -166,21 +175,46 @@ public sealed class MainWindow : Window
             if (Settings.PanelLocked) { e.Handled = true; return; }
             if (e.Key == Key.F5) { await RefreshAsync(); e.Handled = true; }
             if (e.Key == Key.OemComma && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) { OpenSettings(); e.Handled = true; }
-            if (e.Key == Key.Escape) Hide();
+            if (e.Key == Key.Escape)
+            {
+                if (wordLookup?.IsOpen == true) CloseWordLookup();
+                else Hide();
+                e.Handled = true;
+            }
         };
         Closing += (_, e) => { if (!quitting) { e.Cancel = true; Hide(); } };
     }
     private void SetHover(bool visible)
     {
+        SetToolbarHover(visible || wordLookup?.IsOpen == true);
+        if (!visible) HoverHints.Close(Surface);
+        if (visible && !Settings.PanelLocked) { todoHideDelay.Stop(); AnimateTodoFooter(true); }
+        else if (todoEditor?.IsKeyboardFocusWithin != true) { todoHideDelay.Stop(); todoHideDelay.Start(); }
+    }
+    private void SetToolbarHover(bool visible)
+    {
         toolbar.IsHitTestVisible = visible;
         if (!visible)
         {
-            HoverHints.Close(Surface);
             foreach (var button in toolbar.Children.OfType<Button>()) HoverHints.Close(button);
         }
         toolbar.BeginAnimation(OpacityProperty, new DoubleAnimation(visible ? 1 : 0, TimeSpan.FromMilliseconds(visible ? 160 : 220)));
-        if (visible && !Settings.PanelLocked) { todoHideDelay.Stop(); AnimateTodoFooter(true); }
-        else if (todoEditor?.IsKeyboardFocusWithin != true) { todoHideDelay.Stop(); todoHideDelay.Start(); }
+    }
+    private void ToggleWordLookup()
+    {
+        if (!IsVisible || Settings.PanelLocked || Settings.ClickThrough) return;
+        if (wordLookup is null)
+        {
+            wordLookup = new(Settings, toolbar);
+            wordLookup.Opened += (_, _) => SetToolbarHover(true);
+            wordLookup.Closed += (_, _) => SetToolbarHover(IsVisible && IsMouseOver);
+        }
+        foreach (var button in toolbar.Children.OfType<Button>()) HoverHints.Close(button);
+        wordLookup.IsOpen = !wordLookup.IsOpen;
+    }
+    private void CloseWordLookup()
+    {
+        if (wordLookup is { IsOpen: true } popup) popup.IsOpen = false;
     }
     private void OnStateChanged()
     {
@@ -411,6 +445,8 @@ public sealed class MainWindow : Window
         var key = $"{Settings.ShowTodo}|{Settings.ShowVocabulary}|{calculated.Height}|{area}|{Settings.Theme}|{Settings.TextScale}|{Settings.TextWeight}|{Settings.HideCompletedTodos}|" + string.Join("\n", Settings.Todos.Select(t => $"{t.Id}:{t.Completed}:{t.Text}"));
         if (key != todoKey) { BuildTodo(calculated); todoKey = key; }
         ApplyPanelLock();
+        if (Settings.PanelLocked || Settings.ClickThrough) CloseWordLookup();
+        else wordLookup?.Refresh();
         UpdateSectionControls();
         Surface.InvalidateVisual(); NativeWindow.Apply(this, Settings);
         if (!HasAddActions || Settings.PanelLocked) AnimateTodoFooter(false, false);
@@ -689,12 +725,14 @@ public sealed class MainWindow : Window
     }
     public void OpenSettings()
     {
+        CloseWordLookup();
         Settings.ClickThrough = false; Settings.PanelLocked = false; ApplySettings(); SaveSettings();
         if (settingsWindow is { IsLoaded: true }) { settingsWindow.Activate(); return; }
         settingsWindow = new(this); settingsWindow.Closed += (_, _) => settingsWindow = null; settingsWindow.Show();
     }
     public void OpenHardwareHistory(HardwareMetric? metric = null)
     {
+        CloseWordLookup();
         if (historyWindow is { IsLoaded: true }) {
             if (metric is { } chosen) historyWindow.SelectMetric(chosen);
             if (historyWindow.WindowState == WindowState.Minimized) historyWindow.WindowState = WindowState.Normal;
