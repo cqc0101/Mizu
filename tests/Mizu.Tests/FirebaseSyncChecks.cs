@@ -24,6 +24,11 @@ internal static class FirebaseSyncChecks
         var config = FirebaseConfig.Parse($"const firebaseConfig = {{apiKey: '{key}', projectId: \"{project}\"}}; initializeApp(firebaseConfig);");
         Check(config.ApiKey == key && config.ProjectId == project, "Firebase Web SDK snippets are parsed as data");
         Check(FirebaseConfig.Parse(JsonSerializer.Serialize(new { apiKey = key, projectId = project })) == config, "JSON config works");
+        var webConfig = config.ExportWebConfig();
+        Check(FirebaseConfig.Parse(webConfig) == config, "Exported configuration can be imported again");
+        using var exported = JsonDocument.Parse(webConfig);
+        Check(exported.RootElement.EnumerateObject().Select(property => property.Name).ToHashSet()
+            .SetEquals(["projectId", "apiKey"]), "Web config exports only the two client fields");
         Check(FirebaseConfig.Parse($"{{apiKey: '{key}', projectId: '{project}'}}\n{{apiKey: 'EXAMPLE', projectId: '{project}'}}") == config,
             "A placeholder snippet does not invalidate a real configuration in the same file");
         Reject<FormatException>(() => FirebaseConfig.Parse($"{{apiKey: '{key}', projectId: 'abc.example.com'}}"), "Malformed project ids must be rejected");

@@ -36,9 +36,31 @@ public sealed partial class SettingsWindow
             Background = theme.Brush("#F2F4ED"), BorderBrush = theme.Brush("#DDE2D6")
         };
         System.Windows.Automation.AutomationProperties.SetName(config, "Firebase 网页配置");
+        FirebaseConfig ReadConfig() => !string.IsNullOrWhiteSpace(config.Text) ? FirebaseConfig.Parse(config.Text)
+            : selectedConfig ?? throw new FormatException("请先导入 Firebase 网页配置。");
+        void ExportConfig(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var project = backups.Connection?.Config ?? ReadConfig();
+                var content = project.ExportWebConfig();
+                var dialog = new SaveFileDialog
+                {
+                    Title = "导出 Firebase 网页配置", Filter = "JSON|*.json", DefaultExt = ".json",
+                    FileName = $"mizu-firebase-{project.ProjectId}.json"
+                };
+                if (dialog.ShowDialog(this) != true) return;
+                File.WriteAllText(dialog.FileName, content);
+                syncStatus.Text = "配置已导出。可在网页版导入，再用同一 Firebase 账号登录。";
+            }
+            catch (FormatException ex) { syncStatus.Text = ex.Message; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { syncStatus.Text = "无法保存配置文件。"; }
+        }
         signInPanel.Children.Add(configSummary);
         signInPanel.Children.Add(config);
-        signInPanel.Children.Add(ActionButton("选择配置文件", (_, _) =>
+        var configActions = new WrapPanel();
+        signInPanel.Children.Add(configActions);
+        configActions.Children.Add(ActionButton("选择配置文件", (_, _) =>
         {
             var dialog = new OpenFileDialog
             {
@@ -57,6 +79,7 @@ public sealed partial class SettingsWindow
             catch (FormatException ex) { syncStatus.Text = ex.Message; }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { syncStatus.Text = "无法读取配置文件。"; }
         }));
+        configActions.Children.Add(ActionButton("导出网页配置", ExportConfig));
 
         var email = new TextBox
         {
@@ -142,8 +165,7 @@ public sealed partial class SettingsWindow
             FirebaseConfig imported;
             try
             {
-                imported = !string.IsNullOrWhiteSpace(config.Text) ? FirebaseConfig.Parse(config.Text)
-                    : selectedConfig ?? throw new FormatException("请先导入 Firebase 网页配置。");
+                imported = ReadConfig();
                 if (string.IsNullOrWhiteSpace(email.Text) || password.Password.Length == 0)
                     throw new FormatException("请填写 Firebase Auth 邮箱和密码。");
             }
@@ -170,6 +192,7 @@ public sealed partial class SettingsWindow
                 ReloadSyncPage(backups.Message);
         }));
         actions.Children.Add(ActionButton("退出登录", async (_, _) => await backups.SignOutAsync(lifetime.Token)));
+        actions.Children.Add(ActionButton("导出网页配置", ExportConfig));
         Refresh();
         return root;
     }

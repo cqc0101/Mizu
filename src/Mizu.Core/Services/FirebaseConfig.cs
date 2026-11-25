@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Mizu.Core.Services;
@@ -7,9 +8,16 @@ public sealed record FirebaseConfig(string ProjectId, string ApiKey)
     public const int MaximumConfigLength = 64 * 1024;
     private static readonly Regex ProjectPattern = new(@"\A[a-z][a-z0-9-]{4,28}[a-z0-9]\z", RegexOptions.CultureInvariant);
     private static readonly Regex KeyPattern = new(@"\AAIza[A-Za-z0-9_-]{35}\z", RegexOptions.CultureInvariant);
+    private static readonly JsonSerializerOptions ExportOptions = new() { WriteIndented = true };
 
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsValid => ProjectId is not null && ApiKey is not null && ProjectPattern.IsMatch(ProjectId) && KeyPattern.IsMatch(ApiKey);
+
+    public string ExportWebConfig()
+    {
+        if (!IsValid) throw new FormatException("Firebase 网页配置无效。");
+        return JsonSerializer.Serialize(new { projectId = ProjectId, apiKey = ApiKey }, ExportOptions);
+    }
 
     public static FirebaseConfig Parse(string text)
     {
