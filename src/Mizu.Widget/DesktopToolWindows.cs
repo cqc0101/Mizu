@@ -5,8 +5,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Threading;
 using Mizu.Core.Services;
+using Mizu.Widget.Controls;
 
 namespace Mizu.Widget;
 
@@ -30,9 +30,8 @@ internal abstract class DesktopToolWindow : Window
         Theme = new(this);
         Background = Theme.Brush("#F0F1EC");
         Foreground = Theme.Brush("#41483E");
-        Theme.Brush("#D9E2CF");
-        Theme.Brush("#8EA37F");
-        Theme.Brush("#8B9F7F");
+        foreach (var color in new[] { "#D9E2CF", "#8EA37F", "#8B9F7F", "#DDE2D6", "#FCFDF8", "#8A9F7B", "#5C7650" })
+            Theme.Brush(color);
         Body.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/Mizu;component/SettingsStyles.xaml", UriKind.Relative) });
         TextElement.SetForeground(Body, Foreground);
         Content = new Border { Child = Body, Padding = new(16), Background = Background };
@@ -69,54 +68,16 @@ internal abstract class DesktopToolWindow : Window
     protected TextBlock Caption(string text) => new() { Text = text, Foreground = Theme.Brush("#7B8674"), TextWrapping = TextWrapping.Wrap };
 }
 
-internal sealed class StickyNoteWindow : DesktopToolWindow
-{
-    public StickyNoteWindow(MainWindow owner) : base(owner, "Mizu · 便签", 325, 264)
-    {
-        MinWidth = 240;
-        MinHeight = 168;
-        Body.RowDefinitions.Add(new());
-        Body.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        var note = Field("便签内容", owner.Settings.StickyNote, AppSettings.MaximumStickyNoteLength);
-        note.AcceptsReturn = true;
-        note.TextWrapping = TextWrapping.Wrap;
-        note.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-        note.Padding = new(11);
-        note.FontSize = 14;
-        Body.Children.Add(note);
-        var status = Caption("保存在此电脑");
-        status.Margin = new(2, 8, 0, 0);
-        status.FontSize = 11;
-        Grid.SetRow(status, 1);
-        Body.Children.Add(status);
-        var save = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
-        void Save()
-        {
-            save.Stop();
-            owner.SaveSettings();
-        }
-        save.Tick += (_, _) => Save();
-        note.TextChanged += (_, _) =>
-        {
-            owner.Settings.StickyNote = note.Text;
-            save.Stop();
-            save.Start();
-        };
-        Closing += (_, _) => { if (save.IsEnabled) Save(); };
-        Loaded += (_, _) => { note.Focus(); note.CaretIndex = note.Text.Length; };
-    }
-}
-
 internal sealed class ClockWindow : DesktopToolWindow
 {
     private readonly MainWindow owner;
     private DesktopClock Clock => owner.Settings.DesktopClock;
     private readonly StackPanel alarms = new();
     private readonly StackPanel pages = new();
-    private readonly TextBlock time = new() { FontSize = 30, FontWeight = FontWeights.Light };
+    private readonly TextBlock time = new() { FontSize = 32, FontWeight = FontWeights.SemiBold };
     private readonly TextBlock reminder;
-    private readonly TextBlock countdownTime = TimerText();
-    private readonly TextBlock focusTime = TimerText();
+    private readonly TimerFace countdownFace, focusFace;
+    private readonly WrapPanel countdownPresets, focusPresets;
     private readonly TextBlock focusPhase;
     private readonly TextBox countdownMinutes, countdownSeconds, focusMinutes, breakMinutes;
     private readonly Button countdownAction, focusAction;
@@ -124,7 +85,7 @@ internal sealed class ClockWindow : DesktopToolWindow
     private readonly FrameworkElement[] sections;
     private string? lastRenderedTime;
 
-    public ClockWindow(MainWindow owner) : base(owner, "Mizu · 时钟", 410, 414)
+    public ClockWindow(MainWindow owner) : base(owner, "Mizu · 时钟", 410, 502)
     {
         this.owner = owner;
         MinWidth = 365;
@@ -133,6 +94,7 @@ internal sealed class ClockWindow : DesktopToolWindow
         Body.RowDefinitions.Add(new());
         var heading = new StackPanel { Margin = new(2, 0, 2, 10) };
         Body.Children.Add(heading);
+        Typography.SetNumeralAlignment(time, FontNumeralAlignment.Tabular);
         heading.Children.Add(time);
         reminder = Caption("");
         reminder.Foreground = Theme.Brush("#8EA37F");
@@ -155,18 +117,26 @@ internal sealed class ClockWindow : DesktopToolWindow
         Body.Children.Add(scroll);
 
         var alarmPage = BuildAlarmPage();
+        countdownFace = new(Theme.Brush("#8EA37F"), Theme.Brush("#E7EBE1"));
+        focusFace = new(Theme.Brush("#8EA37F"), Theme.Brush("#E7EBE1"));
         countdownMinutes = Number("倒计时分钟", Clock.Countdown.DurationSeconds / 60, 3);
         countdownSeconds = Number("倒计时秒数", Clock.Countdown.DurationSeconds % 60, 2);
         countdownAction = ToolButton("开始", ToggleCountdown, true);
-        var countdownPage = TimerPage(null, countdownTime, countdownMinutes, "分钟", countdownSeconds, "秒", countdownAction,
+        var countdownPage = TimerPage(null, countdownFace, countdownMinutes, "分钟", countdownSeconds, "秒", countdownAction,
             () => { Clock.Countdown = Clock.Countdown.Reset(); Save(); });
+        countdownPresets = AddPresets(countdownPage, new[] { 1, 3, 5, 10, 30 }.Select(minutes =>
+            ToolButton($"{minutes} 分钟", () => SelectCountdownPreset(minutes))));
+        AddDialToggle(countdownPage, Clock.ShowCountdownDial, enabled => Clock.ShowCountdownDial = enabled);
         focusPhase = Caption("");
         focusPhase.HorizontalAlignment = HorizontalAlignment.Center;
         focusMinutes = Number("专注分钟", Clock.FocusMinutes, 3);
         breakMinutes = Number("休息分钟", Clock.BreakMinutes, 2);
         focusAction = ToolButton("开始专注", ToggleFocus, true);
-        var focusPage = TimerPage(focusPhase, focusTime, focusMinutes, "专注分钟", breakMinutes, "休息分钟", focusAction,
+        var focusPage = TimerPage(focusPhase, focusFace, focusMinutes, "专注分钟", breakMinutes, "休息分钟", focusAction,
             () => { Clock.OnBreak = false; Clock.Focus = new(Clock.FocusMinutes * 60); Save(); });
+        focusPresets = AddPresets(focusPage, new[] { (Focus: 25, Break: 5), (Focus: 50, Break: 10), (Focus: 90, Break: 15) }.Select(preset =>
+            ToolButton($"{preset.Focus} / {preset.Break} 分钟", () => SelectFocusPreset(preset.Focus, preset.Break))));
+        AddDialToggle(focusPage, Clock.ShowFocusDial, enabled => Clock.ShowFocusDial = enabled);
         sections = [alarmPage, countdownPage, focusPage];
         foreach (var section in sections) pages.Children.Add(section);
         SelectPage(0);
@@ -244,7 +214,7 @@ internal sealed class ClockWindow : DesktopToolWindow
         }
     }
 
-    private StackPanel TimerPage(TextBlock? phase, TextBlock display, TextBox first, string firstLabel, TextBox second,
+    private StackPanel TimerPage(TextBlock? phase, FrameworkElement display, TextBox first, string firstLabel, TextBox second,
         string secondLabel, Button action, Action reset)
     {
         var panel = new StackPanel { Margin = new(0, 4, 0, 4) };
@@ -271,6 +241,45 @@ internal sealed class ClockWindow : DesktopToolWindow
         return panel;
     }
 
+    private static WrapPanel AddPresets(Panel page, IEnumerable<Button> buttons)
+    {
+        var tray = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new(0, 8, 0, 0) };
+        foreach (var button in buttons)
+        {
+            button.Padding = new(7, 5, 7, 5);
+            button.Margin = new(2);
+            tray.Children.Add(button);
+        }
+        page.Children.Add(tray);
+        return tray;
+    }
+
+    private void AddDialToggle(Panel page, bool enabled, Action<bool> apply)
+    {
+        var toggle = new CheckBox { Content = "圆盘走时", IsChecked = enabled, HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = Foreground, Margin = new(0, 9, 0, 4) };
+        toggle.Click += (_, _) => { apply(toggle.IsChecked == true); Save(); };
+        page.Children.Add(toggle);
+    }
+
+    private void SelectCountdownPreset(int minutes)
+    {
+        countdownMinutes.Text = minutes.ToString(CultureInfo.InvariantCulture);
+        countdownSeconds.Text = "0";
+        Clock.Countdown = new(minutes * 60);
+        Save();
+    }
+
+    private void SelectFocusPreset(int focus, int rest)
+    {
+        focusMinutes.Text = focus.ToString(CultureInfo.InvariantCulture);
+        breakMinutes.Text = rest.ToString(CultureInfo.InvariantCulture);
+        Clock.FocusMinutes = focus;
+        Clock.BreakMinutes = rest;
+        Clock.Focus = new((Clock.OnBreak ? rest : focus) * 60);
+        Save();
+    }
+
     private TextBox Number(string label, int initial, int maxLength)
     {
         var input = Field(label, initial.ToString(CultureInfo.InvariantCulture), maxLength);
@@ -280,15 +289,16 @@ internal sealed class ClockWindow : DesktopToolWindow
         return input;
     }
 
-    private static TextBlock TimerText() => new() { FontSize = 48, FontWeight = FontWeights.Light, HorizontalAlignment = HorizontalAlignment.Center, Margin = new(0, 4, 0, 2) };
     private static bool ReadNumber(TextBox input, int min, int max, out int value) =>
         int.TryParse(input.Text, NumberStyles.None, CultureInfo.InvariantCulture, out value) && value >= min && value <= max;
 
     private void ToggleCountdown()
     {
+        var running = Clock.Countdown.DueAt is not null;
         owner.RefreshClock();
         var now = DateTimeOffset.Now;
         var timer = Clock.Countdown;
+        if (running && timer.DueAt is null) return;
         if (timer.DueAt is not null) Clock.Countdown = timer.Pause(now);
         else if (timer.PausedSeconds is not null) Clock.Countdown = timer.Start(now);
         else
@@ -303,9 +313,11 @@ internal sealed class ClockWindow : DesktopToolWindow
 
     private void ToggleFocus()
     {
+        var running = Clock.Focus.DueAt is not null;
         owner.RefreshClock();
         var now = DateTimeOffset.Now;
         var timer = Clock.Focus;
+        if (running && timer.DueAt is null) return;
         if (timer.DueAt is not null) Clock.Focus = timer.Pause(now);
         else if (timer.PausedSeconds is not null) Clock.Focus = timer.Start(now);
         else
@@ -337,17 +349,15 @@ internal sealed class ClockWindow : DesktopToolWindow
         var current = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         if (lastRenderedTime != current) { time.Text = current; lastRenderedTime = current; }
         if (refreshAlarms) RenderAlarms();
-        UpdateTimer(Clock.Countdown, countdownTime, countdownAction, "开始", now);
-        UpdateTimer(Clock.Focus, focusTime, focusAction, Clock.OnBreak ? "开始休息" : "开始专注", now);
-        countdownMinutes.IsEnabled = countdownSeconds.IsEnabled = Clock.Countdown is { DueAt: null, PausedSeconds: null };
-        focusMinutes.IsEnabled = breakMinutes.IsEnabled = Clock.Focus is { DueAt: null, PausedSeconds: null };
+        countdownFace.Update(Clock.Countdown, now, Clock.ShowCountdownDial);
+        focusFace.Update(Clock.Focus, now, Clock.ShowFocusDial);
+        countdownAction.Content = ActionLabel(Clock.Countdown, "开始");
+        focusAction.Content = ActionLabel(Clock.Focus, Clock.OnBreak ? "开始休息" : "开始专注");
+        countdownPresets.IsEnabled = countdownMinutes.IsEnabled = countdownSeconds.IsEnabled = Clock.Countdown is { DueAt: null, PausedSeconds: null };
+        focusPresets.IsEnabled = focusMinutes.IsEnabled = breakMinutes.IsEnabled = Clock.Focus is { DueAt: null, PausedSeconds: null };
         focusPhase.Text = Clock.OnBreak ? "休息" : "专注";
     }
 
-    private static void UpdateTimer(DesktopTimer timer, TextBlock display, Button action, string startText, DateTimeOffset now)
-    {
-        var remaining = timer.Remaining(now);
-        display.Text = $"{remaining / 60:D2}:{remaining % 60:D2}";
-        action.Content = timer.DueAt is not null ? "暂停" : timer.PausedSeconds is not null ? "继续" : startText;
-    }
+    private static string ActionLabel(DesktopTimer timer, string startText) => timer.DueAt is not null ? "暂停" :
+        timer.PausedSeconds is not null ? "继续" : startText;
 }

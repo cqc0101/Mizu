@@ -24,15 +24,22 @@ var desktopClock = new DesktopClock
 desktopClock.Countdown = desktopClock.Countdown.Pause(now.AddSeconds(3));
 Check(desktopClock.Countdown.Remaining(now.AddMinutes(1)) == 7, "A paused countdown keeps its remaining time");
 desktopClock.Countdown = desktopClock.Countdown.Start(now.AddSeconds(5));
+Check(desktopClock.Countdown.RemainingFraction(now.AddSeconds(5)) == .7 &&
+    Math.Abs(desktopClock.Countdown.RemainingFraction(now.AddSeconds(7).AddMilliseconds(500)) - .45) < .000001,
+    "The circle follows the remaining portion of the original duration after resuming");
 Check(desktopClock.CollectReminders(now.AddSeconds(4)).Count == 2 && desktopClock.Alarms[0].DueAt is null &&
     desktopClock.Alarms[1].DueAt > now.AddSeconds(4), "Each due alarm fires once and daily alarms get a new deadline");
-var desktopTools = new AppSettings { StickyNote = "第一行\n第二行", DesktopClock = desktopClock };
+desktopClock.ShowCountdownDial = false;
+var desktopTools = new AppSettings { StickyNote = "第一行\n第二行", StickyNoteTopmost = true, DesktopClock = desktopClock };
 var restoredTools = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(desktopTools))!;
 restoredTools.Validate();
 Check(restoredTools.StickyNote == desktopTools.StickyNote && restoredTools.DesktopClock.Countdown.DueAt == now.AddSeconds(12),
     "Local settings preserve a multiline note, alarms and the running countdown");
+Check(restoredTools.StickyNoteTopmost && !restoredTools.DesktopClock.ShowCountdownDial && restoredTools.DesktopClock.ShowFocusDial,
+    "Sticky note pin and independent clock dial preferences are preserved");
 Check(restoredTools.DesktopClock.CollectReminders(now.AddSeconds(12)).SequenceEqual(["倒计时结束"]) &&
     restoredTools.DesktopClock.Countdown.Remaining(now.AddSeconds(12)) == 0 &&
+    restoredTools.DesktopClock.Countdown.RemainingFraction(now.AddSeconds(12)) == 0 &&
     restoredTools.DesktopClock.CollectReminders(now.AddSeconds(13)).Count == 0, "Countdown reaches zero exactly once across restarts");
 Check(restoredTools.DesktopClock.CollectReminders(now.AddMinutes(1)).SequenceEqual(["专注结束"]) &&
     restoredTools.DesktopClock.OnBreak && restoredTools.DesktopClock.Focus.DurationSeconds == 120 &&

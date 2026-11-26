@@ -122,7 +122,8 @@ public sealed class WidgetSurface(WidgetState state, AppSettings settings) : Fra
             switch (section.Kind)
             {
                 case WidgetSection.Clock:
-                    Art.Text(d, DateTime.Now.ToString("HH:mm"), 29, section.Top - 9, 58, foreground, Dpi, width: 298, weight: settings.TextWeight, alignment: TextAlignment.Center);
+                    Art.Text(d, DateTime.Now.ToString("HH:mm"), 29, section.Top - 9, 58, foreground, Dpi, width: 298,
+                        weight: Math.Max(600, settings.TextWeight), fit: true, alignment: TextAlignment.Center);
                     Art.Text(d, DateTime.Now.ToString("MM.dd  dddd"), 29, section.Top + 65, 12, secondary, Dpi, width: 298, alignment: TextAlignment.Center);
                     break;
                 case WidgetSection.Weather: DrawWeatherTransition(d, section); break;

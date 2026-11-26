@@ -348,7 +348,7 @@ public sealed partial class MainWindow : Window
         }
         return false;
     }
-    private Button IconButton(string icon, string tip, Action clicked)
+    internal Button IconButton(string icon, string tip, Action? clicked = null)
     {
         var button = new Button { Width = 29, Height = 25, Background = Brushes.Transparent, BorderThickness = new(0), Cursor = Cursors.Hand,
             Content = new IconView(icon, Surface.Material.Secondary) { Width = 13, Height = 13 }, Padding = new(6), FocusVisualStyle = null };
@@ -357,10 +357,14 @@ public sealed partial class MainWindow : Window
         button.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse("""
             <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button">
               <Border x:Name="Body" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" CornerRadius="7" Background="Transparent"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-              <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Body" Property="Background" Value="#2486937F"/></Trigger></ControlTemplate.Triggers>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Body" Property="Background" Value="#2486937F"/></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Body" Property="Background" Value="#3686937F"/></Trigger>
+              </ControlTemplate.Triggers>
             </ControlTemplate>
             """);
-        button.Click += (_, _) => clicked(); return button;
+        if (clicked is not null) button.Click += (_, _) => clicked();
+        return button;
     }
     private IntPtr WindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {

@@ -48,6 +48,7 @@ public sealed class AppSettings
     public bool ShowVocabulary { get; set; }
     public bool ShowClock { get; set; }
     public string StickyNote { get; set; } = "";
+    public bool StickyNoteTopmost { get; set; }
     public DesktopClock DesktopClock { get; set; } = new();
     public int VocabularyVisibleRows { get; set; } = 1;
     public int VocabularyColumns { get; set; } = 1;

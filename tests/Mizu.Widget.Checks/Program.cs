@@ -750,7 +750,26 @@ Check(more.Visibility == Visibility.Collapsed && Desc<Button>(lookupToolbar).Cou
     "The regular-size toolbar exposes its actions directly");
 noteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(65);
 var noteWindow = app.Windows.OfType<Window>().Single(window => window.Title == "Mizu · 便签");
+Button NoteAction(string label) => Desc<Button>(noteWindow).Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == label);
+Check(noteWindow.WindowStyle == WindowStyle.None && noteWindow.AllowsTransparency && noteWindow.ResizeMode == ResizeMode.CanMinimize &&
+    Desc<Button>(noteWindow).Count() == 3, "The glass note has three small frameless controls and no maximize action");
+NoteAction("便签置顶").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(noteWindow.Topmost && !lookupMain.Topmost, "The note can be pinned independently");
 Desc<TextBox>(noteWindow).Single().Text = "独立便签\n测试内容";
+NoteAction("最小化便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(35);
+Check(noteWindow.WindowState == WindowState.Minimized, "The frameless note can be minimized");
+noteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(65);
+Check(noteWindow.WindowState == WindowState.Normal && noteWindow.Topmost, "The widget restores a minimized note");
+var noteFace = Capture((FrameworkElement)noteWindow.Content);
+var corner = new byte[4]; noteFace.CopyPixels(new Int32Rect(0, 0, 1, 1), corner, 4, 0);
+Check(corner[3] == 0, "The note's rounded corner is transparent");
+if (Environment.GetEnvironmentVariable("MIZU_NOTE_RENDER") is { Length: > 0 } noteImage)
+{
+    var png = new PngBitmapEncoder();
+    png.Frames.Add(BitmapFrame.Create(noteFace));
+    using var output = System.IO.File.Create(noteImage);
+    png.Save(output);
+}
 noteWindow.Close();
 noteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(65);
 noteWindow = app.Windows.OfType<Window>().Single(window => window.Title == "Mizu · 便签");
@@ -762,6 +781,19 @@ Button ClockAction(string label) => Desc<Button>(clockTool).First(button => Equa
 ClockAction("添加闹钟").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(lookupSettings.DesktopClock.Alarms.Count == 1, "The clock window creates an alarm");
 ClockAction("倒计时").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(35);
+ClockAction("10 分钟").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(lookupSettings.DesktopClock.Countdown.DurationSeconds == 600 && lookupSettings.DesktopClock.Countdown.DueAt is null,
+    "A countdown preset fills in the duration and waits for Start");
+CheckBox DialToggle() => Desc<CheckBox>(clockTool).Single(box => Equals(box.Content, "圆盘走时") && box.IsVisible);
+FrameworkElement? VisibleDial() => Desc<FrameworkElement>(clockTool).FirstOrDefault(item => item.GetType().Name == "TimerDial" && item.IsVisible);
+var countdownDial = DialToggle();
+Check(countdownDial.Template.FindName("Track", countdownDial) is Border { Background: not null } &&
+    countdownDial.Template.FindName("Thumb", countdownDial) is System.Windows.Shapes.Ellipse { Fill: not null },
+    "The themed dial switch renders both its track and thumb");
+Check(VisibleDial() is not null, "The countdown displays its circular dial by default");
+countdownDial.IsChecked = false;
+countdownDial.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(35);
+Check(VisibleDial() is null && !lookupSettings.DesktopClock.ShowCountdownDial, "The countdown's dial can be hidden");
 ClockAction("开始").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(lookupSettings.DesktopClock.Countdown.DueAt > DateTimeOffset.Now, "The clock window starts the countdown");
 ClockAction("暂停").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -769,8 +801,16 @@ Check(lookupSettings.DesktopClock.Countdown.PausedSeconds > 0, "The countdown ca
 ClockAction("番茄钟").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(35);
 var focusInput = Desc<TextBox>(clockTool).Single(box => System.Windows.Automation.AutomationProperties.GetName(box) == "专注分钟");
 Check(focusInput.Foreground is SolidColorBrush { Color.R: > 180 }, "Timer input text is readable against the dark theme");
+ClockAction("50 / 10 分钟").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(lookupSettings.DesktopClock.FocusMinutes == 50 && lookupSettings.DesktopClock.BreakMinutes == 10 && VisibleDial() is not null,
+    "Pomodoro presets set both times and allow their own dial");
 ClockAction("开始专注").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(lookupSettings.DesktopClock.Focus.DueAt > DateTimeOffset.Now, "The clock window starts focus");
+var displayNow = DateTimeOffset.Now.AddMinutes(20);
+clockTool.GetType().GetMethod("Refresh")!.Invoke(clockTool, [displayNow, false]);
+Pump(45);
+Check(VisualTreeHelper.GetDrawing(VisibleDial()!)?.Children.OfType<GeometryDrawing>().Any(item => item.Geometry is StreamGeometry) == true,
+    "A partially elapsed Pomodoro renders an arc inside the ring track");
 if (Environment.GetEnvironmentVariable("MIZU_CLOCK_RENDER") is { Length: > 0 } clockImage)
 {
     var content = (FrameworkElement)clockTool.Content;

@@ -4,9 +4,13 @@ public sealed record DesktopAlarm(Guid Id, TimeOnly Time, string Label, bool Dai
 
 public sealed record DesktopTimer(int DurationSeconds, DateTimeOffset? DueAt = null, int? PausedSeconds = null, bool Finished = false)
 {
-    public int Remaining(DateTimeOffset now) => DueAt is { } due
-        ? (int)Math.Clamp(Math.Ceiling((due - now).TotalSeconds), 0, DurationSeconds)
+    private double RemainingSeconds(DateTimeOffset now) => DueAt is { } due
+        ? Math.Clamp((due - now).TotalSeconds, 0, DurationSeconds)
         : Finished ? 0 : PausedSeconds ?? DurationSeconds;
+
+    public int Remaining(DateTimeOffset now) => (int)Math.Ceiling(RemainingSeconds(now));
+
+    public double RemainingFraction(DateTimeOffset now) => DurationSeconds > 0 ? RemainingSeconds(now) / DurationSeconds : 0;
 
     public DesktopTimer Start(DateTimeOffset now) => this with
     {
@@ -33,6 +37,8 @@ public sealed class DesktopClock
     public int FocusMinutes { get; set; } = 25;
     public int BreakMinutes { get; set; } = 5;
     public bool OnBreak { get; set; }
+    public bool ShowCountdownDial { get; set; } = true;
+    public bool ShowFocusDial { get; set; } = true;
 
     public static DateTimeOffset NextAlarm(TimeOnly time, DateTimeOffset now, TimeZoneInfo? zone = null)
     {
