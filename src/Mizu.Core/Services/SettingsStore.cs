@@ -6,6 +6,7 @@ namespace Mizu.Core.Services;
 
 public sealed class AppSettings
 {
+    public const int MaximumStickyNoteLength = 16000;
     public const int DefaultVocabularyMeaningFontSize = 12;
     public const int MinimumVocabularyMeaningFontSize = 8;
     public const int MaximumVocabularyMeaningFontSize = 28;
@@ -46,6 +47,8 @@ public sealed class AppSettings
     public bool ShowTodo { get; set; }
     public bool ShowVocabulary { get; set; }
     public bool ShowClock { get; set; }
+    public string StickyNote { get; set; } = "";
+    public DesktopClock DesktopClock { get; set; } = new();
     public int VocabularyVisibleRows { get; set; } = 1;
     public int VocabularyColumns { get; set; } = 1;
     public bool VocabularyRandom { get; set; }
@@ -98,6 +101,10 @@ public sealed class AppSettings
 
     public void Validate()
     {
+        StickyNote ??= "";
+        if (StickyNote.Length > MaximumStickyNoteLength) StickyNote = StickyNote[..MaximumStickyNoteLength];
+        DesktopClock ??= new();
+        DesktopClock.Normalize();
         if (!Enum.IsDefined(RamDisplayMode)) RamDisplayMode = MemoryDisplayMode.Percentage;
         if (!Enum.IsDefined(VramDisplayMode)) VramDisplayMode = MemoryDisplayMode.Capacity;
         if (!System.Net.IPAddress.TryParse(NetworkProbeTarget, out var probe) || probe.Equals(System.Net.IPAddress.Any) || probe.Equals(System.Net.IPAddress.IPv6Any)) NetworkProbeTarget = "1.1.1.1";

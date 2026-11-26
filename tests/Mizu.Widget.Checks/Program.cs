@@ -730,8 +730,67 @@ var lookupMain = new MainWindow(lookupSettings, WidgetState.Preview(), preview: 
 lookupMain.Show(); lookupMain.Activate(); Pump(320);
 var lookupButton = Desc<Button>(lookupMain).Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "本地查词");
 var lookupToolbar = (StackPanel)lookupButton.Parent;
-Check(lookupToolbar.Children[0] == lookupButton && lookupButton.Width == ((Button)lookupToolbar.Children[1]).Width,
-    "The search button sits first and matches the size of the toolbar actions");
+var noteButton = (Button)lookupToolbar.Children[1];
+var clockButton = (Button)lookupToolbar.Children[0];
+Check(lookupToolbar.Children[2] == lookupButton && lookupButton.Width == noteButton.Width &&
+    System.Windows.Automation.AutomationProperties.GetName(noteButton) == "便签" &&
+    System.Windows.Automation.AutomationProperties.GetName(clockButton) == "时钟",
+    "The clock and note sit immediately to the left of search");
+var more = Desc<Button>(lookupToolbar).Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "更多操作");
+lookupSettings.Scale = .4; lookupMain.ApplySettings(); Pump(230);
+Check(more.Visibility == Visibility.Visible && Desc<Button>(lookupToolbar).Count(button => button.Visibility == Visibility.Visible) == 6 &&
+    lookupToolbar.ActualWidth < lookupMain.VisualContent.Width - lookupToolbar.Margin.Right, "The compact toolbar fits at 40 percent");
+more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(50);
+var overflow = (ContextMenu)typeof(MainWindow).GetField("toolbarMenu", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lookupMain)!;
+Check(overflow.IsOpen && overflow.Items.OfType<MenuItem>().Select(item => item.Header.ToString()).SequenceEqual(["刷新", "窗口置顶", "收起到托盘"]),
+    "All three compact actions remain available in the arrow menu");
+overflow.IsOpen = false;
+lookupSettings.Scale = 1; lookupMain.ApplySettings(); Pump(220);
+Check(more.Visibility == Visibility.Collapsed && Desc<Button>(lookupToolbar).Count(button => button.Visibility == Visibility.Visible) == 8,
+    "The regular-size toolbar exposes its actions directly");
+noteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(65);
+var noteWindow = app.Windows.OfType<Window>().Single(window => window.Title == "Mizu · 便签");
+Desc<TextBox>(noteWindow).Single().Text = "独立便签\n测试内容";
+noteWindow.Close();
+noteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(65);
+noteWindow = app.Windows.OfType<Window>().Single(window => window.Title == "Mizu · 便签");
+Check(Desc<TextBox>(noteWindow).Single().Text == "独立便签\n测试内容", "Reopening the note keeps the last edit");
+noteWindow.Close();
+clockButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(65);
+var clockTool = app.Windows.OfType<Window>().Single(window => window.Title == "Mizu · 时钟");
+Button ClockAction(string label) => Desc<Button>(clockTool).First(button => Equals(button.Content, label) && button.IsVisible);
+ClockAction("添加闹钟").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(lookupSettings.DesktopClock.Alarms.Count == 1, "The clock window creates an alarm");
+ClockAction("倒计时").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(35);
+ClockAction("开始").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(lookupSettings.DesktopClock.Countdown.DueAt > DateTimeOffset.Now, "The clock window starts the countdown");
+ClockAction("暂停").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(lookupSettings.DesktopClock.Countdown.PausedSeconds > 0, "The countdown can be paused from the clock");
+ClockAction("番茄钟").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(35);
+var focusInput = Desc<TextBox>(clockTool).Single(box => System.Windows.Automation.AutomationProperties.GetName(box) == "专注分钟");
+Check(focusInput.Foreground is SolidColorBrush { Color.R: > 180 }, "Timer input text is readable against the dark theme");
+ClockAction("开始专注").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(lookupSettings.DesktopClock.Focus.DueAt > DateTimeOffset.Now, "The clock window starts focus");
+if (Environment.GetEnvironmentVariable("MIZU_CLOCK_RENDER") is { Length: > 0 } clockImage)
+{
+    var content = (FrameworkElement)clockTool.Content;
+    var bounds = new Rect(0, 0, content.ActualWidth, content.ActualHeight);
+    var drawing = new DrawingVisual();
+    using (var context = drawing.RenderOpen())
+        context.DrawRectangle(new VisualBrush(content) { ViewboxUnits = BrushMappingMode.Absolute, Viewbox = bounds }, null, bounds);
+    var bitmap = new RenderTargetBitmap((int)Math.Ceiling(bounds.Width * 2), (int)Math.Ceiling(bounds.Height * 2), 192, 192, PixelFormats.Pbgra32);
+    bitmap.Render(drawing);
+    var png = new PngBitmapEncoder();
+    png.Frames.Add(BitmapFrame.Create(bitmap));
+    using var output = System.IO.File.Create(clockImage);
+    png.Save(output);
+}
+lookupSettings.PanelLocked = true; lookupMain.ApplySettings();
+Check(!clockTool.IsVisible && clockButton.Visibility == Visibility.Collapsed, "Lock closes the clock and hides desktop tools");
+lookupSettings.DesktopClock.Countdown = new DesktopTimer(5).Start(DateTimeOffset.Now.AddSeconds(-10));
+typeof(MainWindow).GetMethod("RefreshClock", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(lookupMain, null);
+Check(lookupSettings.DesktopClock.Countdown.Finished, "The widget completes a countdown even with the clock window closed");
+lookupSettings.PanelLocked = false; lookupSettings.Scale = .68; lookupMain.ApplySettings(); lookupMain.Activate(); Pump(230);
 double lookupHeight = lookupMain.Height;
 lookupButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(70);
 var lookup = (System.Windows.Controls.Primitives.Popup)typeof(MainWindow).GetField("wordLookup", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lookupMain)!;

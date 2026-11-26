@@ -37,6 +37,10 @@ public static class Art
             case "pause": L(8,5,8,19); L(16,5,16,19); break;
             case "plus": L(12, 5, 12, 19); L(5, 12, 19, 12); break;
             case "search": d.DrawEllipse(null, p, new(10.5, 10.5), 6.5, 6.5); L(15.3, 15.3, 21, 21); break;
+            case "clock": d.DrawEllipse(null, p, new(12, 12), 8.5, 8.5); L(12, 7, 12, 12); L(12, 12, 15.5, 14); break;
+            case "note": L(5, 3.5, 19, 3.5); L(19, 3.5, 19, 15); L(19, 15, 13, 21); L(13, 21, 5, 21); L(5, 21, 5, 3.5);
+                L(13, 21, 13, 15); L(13, 15, 19, 15); L(8, 8, 16, 8); L(8, 11.5, 14, 11.5); break;
+            case "chevron": L(6, 9, 12, 15); L(12, 15, 18, 9); break;
             case "settings":
                 d.DrawEllipse(null, p, new(12, 12), 4, 4);
                 for (int i = 0; i < 8; i++) { var a = i * Math.PI / 4; L(12 + 8 * Math.Cos(a), 12 + 8 * Math.Sin(a), 12 + 10 * Math.Cos(a), 12 + 10 * Math.Sin(a)); }

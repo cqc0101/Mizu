@@ -10,7 +10,7 @@ using Mizu.Core;
 
 namespace Mizu.Widget;
 
-public sealed class MainWindow : Window
+public sealed partial class MainWindow : Window
 {
     public AppSettings Settings { get; }
     public event Action? SettingsApplied;
@@ -27,6 +27,7 @@ public sealed class MainWindow : Window
     private readonly System.Windows.Forms.NotifyIcon tray;
     private readonly StackPanel toolbar;
     private readonly Button lockButton;
+    private readonly Button refreshButton, pinButton, hideButton, moreButton;
     private readonly Grid layout;
     private readonly Grid mediaHost = new();
     private string? mediaKey;
@@ -85,11 +86,14 @@ public sealed class MainWindow : Window
         layout.Children.Add(todoEditorHost);
         layout.Children.Add(mediaHost);
         toolbar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new(0, 5, 24, 0), Opacity = 0, IsHitTestVisible = false };
+        toolbar.Children.Add(IconButton("clock", "时钟", OpenClockWindow));
+        toolbar.Children.Add(IconButton("note", "便签", OpenStickyNote));
         toolbar.Children.Add(IconButton("search", "本地查词", ToggleWordLookup));
-        toolbar.Children.Add(IconButton("refresh", "刷新 · F5", async () => { await RefreshAsync(); }));
-        toolbar.Children.Add(IconButton("pin", "切换置顶", () => { Settings.AlwaysOnTop = !Settings.AlwaysOnTop; ApplySettings(); SaveSettings(); }));
+        toolbar.Children.Add(refreshButton = IconButton("refresh", "刷新 · F5", async () => { await RefreshAsync(); }));
+        toolbar.Children.Add(pinButton = IconButton("pin", "切换置顶", ToggleTopmost));
+        toolbar.Children.Add(moreButton = IconButton("chevron", "更多操作", OpenToolbarMenu));
         toolbar.Children.Add(IconButton("settings", "设置 · Ctrl+,", OpenSettings));
-        toolbar.Children.Add(IconButton("close", "收起到托盘", Hide));
+        toolbar.Children.Add(hideButton = IconButton("close", "收起到托盘", Hide));
         lockButton = IconButton("unlock", "锁定面板", () => {
             Settings.PanelLocked = !Settings.PanelLocked;
             if (Settings.PanelLocked) { Keyboard.ClearFocus(); settingsWindow?.Close(); historyWindow?.Close(); }
@@ -110,7 +114,7 @@ public sealed class MainWindow : Window
         menu.Items.Add("穿透鼠标 · Ctrl+Alt+M 恢复", null, (_, _) => Dispatcher.Invoke(() => { Settings.ClickThrough = !Settings.ClickThrough; ApplySettings(); SaveSettings(); }));
         menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(async () => await QuitAsync()));
         tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Dispatcher.Invoke(ToggleVisible);
-        tray.BalloonTipClicked += (_, _) => Dispatcher.Invoke(() => { OpenSettings(); settingsWindow?.ShowUpdates(); });
+        tray.BalloonTipClicked += (_, _) => Dispatcher.Invoke(() => trayNotificationAction?.Invoke());
         SourceInitialized += (_, _) =>
         {
             UpdateWorkArea();
@@ -134,6 +138,7 @@ public sealed class MainWindow : Window
         DpiChanged += (_, _) => QueueWorkAreaRefresh();
         Deactivated += (_, _) => CloseWordLookup();
         displayTimer.Tick += (_, _) => {
+            RefreshClock();
             if (themeRotation.Update(Settings, DateTimeOffset.UtcNow, ThemePalette.All.Select(p => p.Id))) { ApplySettings(); SaveSettings(); }
             if (IsVisible && Settings.ShowDevices) OnStateChanged();
             else if (IsVisible && (Settings.ShowClock || Settings.ShowVocabulary)) Surface.InvalidateVisual();
@@ -143,6 +148,7 @@ public sealed class MainWindow : Window
         {
             if (IsVisible) return;
             CloseWordLookup();
+            CloseToolbarMenu();
             vocabularyEditor?.Close();
             todoHideDelay.Stop();
             AnimateTodoFooter(false, false);
@@ -194,7 +200,7 @@ public sealed class MainWindow : Window
     }
     private void SetHover(bool visible)
     {
-        SetToolbarHover(visible || wordLookup?.IsOpen == true);
+        SetToolbarHover(visible || wordLookup?.IsOpen == true || toolbarMenu?.IsOpen == true);
         if (!visible) HoverHints.Close(Surface);
         if (visible && !Settings.PanelLocked) { todoHideDelay.Stop(); AnimateTodoFooter(true); }
         else if (todoEditor?.IsKeyboardFocusWithin != true) { todoHideDelay.Stop(); todoHideDelay.Start(); }
@@ -323,6 +329,7 @@ public sealed class MainWindow : Window
         var reveal = HasAddActions ? Math.Clamp(TodoReveal, 0, 1) : 0;
         var height = baseHeight + FooterHeight * reveal;
         layout.Width = Surface.Width = geometry.Width;
+        ApplyToolbarLayout();
         layout.Height = Surface.Height = height; Surface.FooterHeight = FooterHeight; Surface.FooterReveal = reveal; Surface.InvalidateVisual();
         todoEditorHost.Height = 30 + 38 * EditorExpansion; todoEditorHost.ClipToBounds = true;
         layout.Clip = new RectangleGeometry(new Rect(0, 0, geometry.Width, height), Settings.CornerRadius, Settings.CornerRadius);
@@ -466,6 +473,9 @@ public sealed class MainWindow : Window
         if (Settings.PanelLocked || Settings.ClickThrough)
         {
             CloseWordLookup();
+            CloseToolbarMenu();
+            stickyNoteWindow?.Close();
+            clockWindow?.Close();
             vocabularyEditor?.Close();
         }
         else wordLookup?.Refresh();
@@ -485,11 +495,7 @@ public sealed class MainWindow : Window
     private void ApplyPanelLock()
     {
         var locked = Settings.PanelLocked;
-        foreach (var button in toolbar.Children.OfType<Button>())
-        {
-            button.Visibility = locked && button != lockButton ? Visibility.Collapsed : Visibility.Visible;
-            if (locked) HoverHints.Close(button);
-        }
+        ApplyToolbarLayout();
         var tip = locked ? "解锁面板" : "锁定面板";
         System.Windows.Automation.AutomationProperties.SetName(lockButton, tip);
         HoverHints.Set(lockButton, tip);
@@ -783,7 +789,8 @@ public sealed class MainWindow : Window
         historyWindow.Closed += (_, _) => historyWindow = null;
         historyWindow.Show();
     }
-    internal void NotifyUpdateAvailable(string tag) => tray.ShowBalloonTip(5000, "Mizu 有新版本", tag + " 已可用，点击查看并选择更新。", System.Windows.Forms.ToolTipIcon.Info);
+    internal void NotifyUpdateAvailable(string tag) => ShowTrayNotification("Mizu 有新版本", tag + " 已可用，点击查看并选择更新。",
+        () => { OpenSettings(); settingsWindow?.ShowUpdates(); });
     public async Task RefreshAsync()
     { await Task.WhenAll(Engine.RefreshDevicesAsync(), Engine.RefreshWeatherAsync()); }
     internal void ShowInteractive()
@@ -798,6 +805,7 @@ public sealed class MainWindow : Window
         Updates.Dispose();
         Backups.Dispose();
         Surface.StopVocabularySpeech();
+        stickyNoteWindow?.Close(); clockWindow?.Close(); CloseToolbarMenu();
         settingsWindow?.Close(); historyWindow?.Close(); SaveSettings();
         tray.Visible = false; var trayIcon = tray.Icon; tray.Dispose(); trayIcon?.Dispose();
         NativeWindow.UnregisterHotKey(new WindowInteropHelper(this).Handle, 0x4d5a);

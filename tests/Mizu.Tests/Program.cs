@@ -10,6 +10,33 @@ try {
 var count = 0;
 void Check(bool value, string message) { if (!value) throw new Exception(message); count++; }
 var now = DateTimeOffset.Parse("2026-11-13T04:00:00Z");
+var utcAlarm = DesktopClock.NextAlarm(new TimeOnly(3, 45), now, TimeZoneInfo.Utc);
+Check(utcAlarm == DateTimeOffset.Parse("2026-11-14T03:45:00Z"), "A passed alarm time rolls to tomorrow");
+Check(DesktopClock.NextAlarm(new TimeOnly(4, 30), now, TimeZoneInfo.Utc) == now.AddMinutes(30), "A future alarm keeps today's date");
+var desktopClock = new DesktopClock
+{
+    Alarms = [new(Guid.NewGuid(), new(7, 20), "会议", false, now.AddSeconds(4)),
+        new(Guid.NewGuid(), new(8, 30), "", true, now.AddSeconds(4))],
+    Countdown = new DesktopTimer(10).Start(now),
+    Focus = new DesktopTimer(60).Start(now),
+    BreakMinutes = 2
+};
+desktopClock.Countdown = desktopClock.Countdown.Pause(now.AddSeconds(3));
+Check(desktopClock.Countdown.Remaining(now.AddMinutes(1)) == 7, "A paused countdown keeps its remaining time");
+desktopClock.Countdown = desktopClock.Countdown.Start(now.AddSeconds(5));
+Check(desktopClock.CollectReminders(now.AddSeconds(4)).Count == 2 && desktopClock.Alarms[0].DueAt is null &&
+    desktopClock.Alarms[1].DueAt > now.AddSeconds(4), "Each due alarm fires once and daily alarms get a new deadline");
+var desktopTools = new AppSettings { StickyNote = "第一行\n第二行", DesktopClock = desktopClock };
+var restoredTools = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(desktopTools))!;
+restoredTools.Validate();
+Check(restoredTools.StickyNote == desktopTools.StickyNote && restoredTools.DesktopClock.Countdown.DueAt == now.AddSeconds(12),
+    "Local settings preserve a multiline note, alarms and the running countdown");
+Check(restoredTools.DesktopClock.CollectReminders(now.AddSeconds(12)).SequenceEqual(["倒计时结束"]) &&
+    restoredTools.DesktopClock.Countdown.Remaining(now.AddSeconds(12)) == 0 &&
+    restoredTools.DesktopClock.CollectReminders(now.AddSeconds(13)).Count == 0, "Countdown reaches zero exactly once across restarts");
+Check(restoredTools.DesktopClock.CollectReminders(now.AddMinutes(1)).SequenceEqual(["专注结束"]) &&
+    restoredTools.DesktopClock.OnBreak && restoredTools.DesktopClock.Focus.DurationSeconds == 120 &&
+    restoredTools.DesktopClock.Focus.DueAt is null, "Finishing a focus session prepares the configured break");
 var monitorSettings = new AppSettings { TemperatureEnabled = true, ShowGpuMemory = true };
 const long gib = 1024L * 1024 * 1024;
 Check(MemoryDisplay.Percentage(gib, 4 * gib) == 25 && MemoryDisplay.Percentage(0, 4 * gib) == 0, "Capacity percentage distinguishes zero usage from missing readings");
